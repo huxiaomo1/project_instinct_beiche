@@ -61,6 +61,31 @@ class PerlinInvertedPyramidStairsTerrainCfg(HfInvertedPyramidStairsTerrainCfg, W
 
 
 @configclass
+class DualPyramidStairsTerrainCfg(HfTerrainBaseCfg, WallTerrainCfgMixin):
+    """A straight course containing an inverted pyramid followed by a positive pyramid."""
+
+    function = hf_terrains.dual_pyramid_stairs_terrain
+
+    step_height: float = MISSING
+    """Height of each stair step in meters."""
+
+    step_width: float = MISSING
+    """Horizontal width of each stair step in meters."""
+
+    platform_width: float = MISSING
+    """Width of the flat platform at the center of each pyramid."""
+
+    feature_width: float = MISSING
+    """Outer width of each square pyramid."""
+
+    inverted_center_x: float = MISSING
+    """X position of the inverted-pyramid center relative to the terrain origin."""
+
+    pyramid_center_x: float = MISSING
+    """X position of the positive-pyramid center relative to the terrain origin."""
+
+
+@configclass
 class PerlinDiscreteObstaclesTerrainCfg(HfDiscreteObstaclesTerrainCfg, WallTerrainCfgMixin):
     function = hf_terrains.perlin_discrete_obstacles_terrain
     perlin_cfg: PerlinPlaneTerrainCfg | None = None

@@ -35,6 +35,31 @@ def feet_air_time(env, command_name: str, vel_threshold: float, sensor_cfg: Scen
     return reward
 
 
+def feet_stumble(
+    env: ManagerBasedRLEnv,
+    sensor_cfg: SceneEntityCfg,
+    horizontal_vertical_ratio: float = 3.0,
+    horizontal_force_threshold: float = 20.0,
+) -> torch.Tensor:
+    """Penalize feet whose contact force is dominated by a horizontal impact.
+
+    A strong horizontal force with little vertical support usually indicates that
+    the swing foot has hit a stair riser or another near-vertical surface.
+    """
+    contact_sensor: ContactSensor = env.scene.sensors[sensor_cfg.name]
+    contact_forces = contact_sensor.data.net_forces_w_history[:, :, sensor_cfg.body_ids, :]
+    horizontal_force = torch.linalg.vector_norm(contact_forces[..., :2], dim=-1)
+    vertical_force = torch.abs(contact_forces[..., 2])
+    stumble = torch.logical_and(
+        horizontal_force > horizontal_vertical_ratio * vertical_force,
+        horizontal_force > horizontal_force_threshold,
+    )
+
+    # Count each foot at most once per policy step even if the contact remains in
+    # several frames of the contact sensor history.
+    return torch.sum(torch.any(stumble, dim=1).float(), dim=-1)
+
+
 def stand_still(
     env: ManagerBasedRLEnv,
     command_name: str,

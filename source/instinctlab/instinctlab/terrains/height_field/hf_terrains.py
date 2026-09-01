@@ -206,6 +206,51 @@ def perlin_pyramid_stairs_terrain(difficulty: float, cfg: hf_terrains_cfg.Perlin
 
 @generate_wall
 @height_field_to_mesh
+def dual_pyramid_stairs_terrain(difficulty: float, cfg: hf_terrains_cfg.DualPyramidStairsTerrainCfg) -> np.ndarray:
+    """Generate a straight course with an inverted pyramid followed by a positive pyramid."""
+    del difficulty  # The play course is deterministic.
+
+    if cfg.step_height <= 0.0 or cfg.step_width <= 0.0:
+        raise ValueError("step_height and step_width must be positive.")
+    if cfg.platform_width <= 0.0 or cfg.feature_width <= cfg.platform_width:
+        raise ValueError("feature_width must be greater than platform_width, and both must be positive.")
+    if abs(cfg.pyramid_center_x - cfg.inverted_center_x) < cfg.feature_width:
+        raise ValueError("The positive and inverted pyramids overlap.")
+
+    half_feature = 0.5 * cfg.feature_width
+    half_platform = 0.5 * cfg.platform_width
+    half_terrain_x = 0.5 * cfg.size[0]
+    half_terrain_y = 0.5 * cfg.size[1]
+    if (
+        abs(cfg.inverted_center_x) + half_feature > half_terrain_x
+        or abs(cfg.pyramid_center_x) + half_feature > half_terrain_x
+        or half_feature > half_terrain_y
+    ):
+        raise ValueError("The dual-pyramid course does not fit inside the terrain size.")
+
+    width_pixels = int(cfg.size[0] / cfg.horizontal_scale)
+    length_pixels = int(cfg.size[1] / cfg.horizontal_scale)
+    x = (np.arange(width_pixels) + 0.5) * cfg.horizontal_scale - half_terrain_x
+    y = (np.arange(length_pixels) + 0.5) * cfg.horizontal_scale - half_terrain_y
+    xx, yy = np.meshgrid(x, y, indexing="ij")
+
+    max_levels = int(np.floor((half_feature - half_platform) / cfg.step_width))
+
+    def pyramid_levels(center_x: float) -> np.ndarray:
+        distance_from_center = np.maximum(np.abs(xx - center_x), np.abs(yy))
+        inward_distance = np.maximum(half_feature - distance_from_center, 0.0)
+        levels = np.floor(inward_distance / cfg.step_width)
+        return np.clip(levels, 0, max_levels)
+
+    step_height_pixels = cfg.step_height / cfg.vertical_scale
+    inverted_levels = pyramid_levels(cfg.inverted_center_x)
+    positive_levels = pyramid_levels(cfg.pyramid_center_x)
+    hf_raw = (positive_levels - inverted_levels) * step_height_pixels
+    return np.rint(hf_raw).astype(np.int16)
+
+
+@generate_wall
+@height_field_to_mesh
 def perlin_discrete_obstacles_terrain(
     difficulty: float, cfg: hf_terrains_cfg.PerlinDiscreteObstaclesTerrainCfg
 ) -> np.ndarray:

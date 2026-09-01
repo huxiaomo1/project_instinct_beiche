@@ -31,6 +31,45 @@ def volume_points_penetration(
     return torch.sum(velocity_times_penetration, dim=-1)
 
 
+def feet_edge_overlap(
+    env: ManagerBasedRLEnv,
+    volume_points_cfg: SceneEntityCfg,
+    contact_forces_cfg: SceneEntityCfg,
+    edge_radius: float,
+    contact_force_threshold: float = 1.0,
+    penetration_tolerance: float = 1e-4,
+    depth_weight: float = 1.0,
+) -> torch.Tensor:
+    """Penalize supporting feet that overlap the terrain's virtual edge regions.
+
+    The overlap ratio measures how much of the sampled foot volume lies in an
+    edge region. The normalized penetration term makes deeper overlap more
+    costly while keeping the output independent of the edge-region radius.
+    """
+    if edge_radius <= 0.0:
+        raise ValueError(f"edge_radius must be positive, got {edge_radius}")
+
+    volume_sensor: VolumePoints = env.scene.sensors[volume_points_cfg.name]
+    contact_sensor: ContactSensor = env.scene.sensors[contact_forces_cfg.name]
+
+    penetration_depth = torch.linalg.vector_norm(volume_sensor.data.penetration_offset, dim=-1)
+    if penetration_depth.shape[1] != len(contact_forces_cfg.body_ids):
+        raise ValueError(
+            "feet_edge_overlap requires the volume-points and contact-force configurations "
+            "to select the same bodies in the same order."
+        )
+
+    overlap_ratio = torch.mean((penetration_depth > penetration_tolerance).float(), dim=-1)
+    normalized_depth = torch.clamp(penetration_depth / edge_radius, min=0.0, max=1.0)
+    mean_normalized_depth = torch.mean(normalized_depth, dim=-1)
+
+    contact_forces = contact_sensor.data.net_forces_w_history[:, :, contact_forces_cfg.body_ids, :]
+    is_contact = torch.linalg.vector_norm(contact_forces, dim=-1).amax(dim=1) > contact_force_threshold
+
+    per_foot_penalty = overlap_ratio + depth_weight * mean_normalized_depth
+    return torch.sum(per_foot_penalty * is_contact.float(), dim=-1)
+
+
 def step_safety(
     env: ManagerBasedRLEnv,
     volume_points_cfg: SceneEntityCfg,
