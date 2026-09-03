@@ -1,5 +1,86 @@
 # 楼梯安全奖励修改日志
 
+## 2026-09-03：使用鞋底支撑率替换静态边缘重合惩罚
+
+### 修改原因
+
+仅根据脚部是否靠近楼梯边缘进行惩罚，可能会把“靠近边缘但鞋底仍有充分支撑”的有效落脚误判为危险落脚。本次修改改为直接检测鞋底有效支撑比例，惩罚脚部已经接触但部分鞋底下方没有同高度踏面支撑的情况。
+
+### 配置变化
+
+- 将 `feet_edge_overlap` 的权重从 `-1.0` 设置为 `0.0`，关闭静态边缘重合惩罚。
+- 保留 `volume_points_penetration`，继续约束摆动脚撞击和穿入台阶棱边。
+- 新增左右脚 `left_support_scanner` 和 `right_support_scanner` 二维鞋底扫描器。
+- 新增 `feet_support_deficit` 鞋底支撑不足惩罚。
+
+### 鞋底扫描网格
+
+```python
+offset_x = 0.0475
+size = [0.145, 0.06]
+resolution = 0.02
+update_period = 0.02
+```
+
+扫描范围与当前脚部体积点的前后、左右范围基本一致。扫描器只随脚部偏航角旋转，射线保持竖直向下，用于取得整个鞋底投影范围内的地形高度。
+
+### `feet_support_deficit` 定义
+
+对于每个有效的鞋底扫描点：
+
+```text
+鞋底高度 = ankle_roll_link_z - height_offset
+高度误差 = abs(鞋底高度 - 射线命中的地面高度)
+单点支撑分数 = exp(-(高度误差 / support_tolerance)^2)
+```
+
+没有命中地形的射线，其单点支撑分数设置为 `0`。每只脚的支撑率和支撑不足量为：
+
+```text
+支撑率 = mean(所有鞋底扫描点的支撑分数)
+支撑不足量 = clamp((min_support_ratio - 支撑率) / min_support_ratio, 0, 1)
+单脚惩罚 = 是否接触 * 支撑不足量^2
+总惩罚 = 左脚惩罚 + 右脚惩罚
+```
+
+只有已经发生接触的脚才会受到惩罚，摆动脚不会因为鞋底悬空而被错误惩罚。原始函数输出范围为 `[0, 2]`。
+
+### 初始参数
+
+```python
+weight = -1.0
+height_offset = 0.058  # G1 鞋模型
+support_tolerance = 0.02
+min_support_ratio = 0.7
+contact_force_threshold = 1.0
+```
+
+### 训练日志
+
+RewardManager 会自动记录：
+
+```text
+Episode_Reward/rewards_feet_support_deficit/max_episode_len_s
+Episode_Reward/rewards_feet_support_deficit/sum
+Episode_Reward/rewards_feet_support_deficit/timestep
+```
+
+### 调参建议
+
+| 训练现象 | 建议调整 |
+|---|---|
+| 正常完整落脚仍频繁产生惩罚 | 将 `support_tolerance` 提高到 `0.025-0.03 m`，或将 `min_support_ratio` 降低到 `0.6-0.65` |
+| 半脚踩空仍然较多 | 将 `min_support_ratio` 提高到 `0.75-0.8`，或将权重提高到 `-1.5` |
+| 机器人不敢在较窄踏面落脚 | 将权重降低到 `-0.3` 至 `-0.7` |
+| 奖励在脚部倾斜落地时误触发 | 结合 `feet_flat_ori` 检查脚底姿态，并适当提高 `support_tolerance` |
+
+### 验证记录
+
+- 已通过三个 Python 文件的语法编译检查。
+- 已核对 IsaacLab 的 `GridPatternCfg` 生成规则，当前参数生成约 `8×4` 个鞋底采样点。
+- 纯 Torch 张量测试中，完整支撑惩罚为 `0`，半脚支撑产生正惩罚，未接触的摆动脚惩罚为 `0`。
+- 当前终端未启动 Isaac Sim，因此仍需通过训练日志和可视化验证实际鞋底高度偏移及触发频率。
+
 ## 2026-09-01：楼梯边缘安全与绊倒惩罚
 
 ### 适用范围

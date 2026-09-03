@@ -188,6 +188,53 @@ def feet_at_plane(
     return torch.sum(left_reward, dim=-1) + torch.sum(right_reward, dim=-1)
 
 
+def feet_support_deficit(
+    env: ManagerBasedRLEnv,
+    contact_sensor_cfg: SceneEntityCfg,
+    left_support_scanner_cfg: SceneEntityCfg,
+    right_support_scanner_cfg: SceneEntityCfg,
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+    height_offset: float = 0.035,
+    support_tolerance: float = 0.02,
+    min_support_ratio: float = 0.7,
+    contact_force_threshold: float = 1.0,
+) -> torch.Tensor:
+    """Penalize a contacting foot when too little of its sole is supported."""
+    if support_tolerance <= 0.0:
+        raise ValueError(f"support_tolerance must be positive, got {support_tolerance}")
+    if not 0.0 < min_support_ratio <= 1.0:
+        raise ValueError(f"min_support_ratio must be in (0, 1], got {min_support_ratio}")
+
+    asset = env.scene[asset_cfg.name]
+    contact_sensor: ContactSensor = env.scene.sensors[contact_sensor_cfg.name]
+    contact_forces = contact_sensor.data.net_forces_w_history[:, :, contact_sensor_cfg.body_ids, :]
+    is_contact = torch.linalg.vector_norm(contact_forces, dim=-1).amax(dim=1) > contact_force_threshold
+
+    foot_heights = asset.data.body_pos_w[:, asset_cfg.body_ids, 2]
+    if foot_heights.shape[1] != 2 or is_contact.shape[1] != 2:
+        raise ValueError("feet_support_deficit requires exactly two feet in matching left-right order.")
+
+    support_penalties = []
+    support_scanner_cfgs = (left_support_scanner_cfg, right_support_scanner_cfg)
+    for foot_index, scanner_cfg in enumerate(support_scanner_cfgs):
+        ground_heights = env.scene.sensors[scanner_cfg.name].data.ray_hits_w[..., 2]
+        valid_hits = torch.isfinite(ground_heights)
+        sole_height = foot_heights[:, foot_index].unsqueeze(-1) - height_offset
+        height_error = torch.abs(sole_height - ground_heights)
+
+        point_support = torch.exp(-torch.square(height_error / support_tolerance))
+        point_support = torch.where(valid_hits, point_support, 0.0)
+        support_ratio = torch.mean(point_support, dim=-1)
+        support_deficit = torch.clamp(
+            (min_support_ratio - support_ratio) / min_support_ratio,
+            min=0.0,
+            max=1.0,
+        )
+        support_penalties.append(torch.square(support_deficit) * is_contact[:, foot_index].float())
+
+    return support_penalties[0] + support_penalties[1]
+
+
 def link_orientation(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")) -> torch.Tensor:
     """Penalize non-flat link orientation using L2 squared kernel."""
     # extract the used quantities (to enable type-hinting)

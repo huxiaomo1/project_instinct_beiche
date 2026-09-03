@@ -292,6 +292,24 @@ class SceneCfg(InteractiveSceneCfg):
         mesh_prim_paths=["/World/ground"],
         update_period=0.02,
     )
+    left_support_scanner = RayCasterCfg(
+        prim_path="{ENV_REGEX_NS}/Robot/left_ankle_roll_link",
+        offset=RayCasterCfg.OffsetCfg(pos=(0.0475, 0.0, 20.0)),
+        ray_alignment="yaw",
+        pattern_cfg=patterns.GridPatternCfg(resolution=0.02, size=[0.145, 0.06]),
+        debug_vis=False,
+        mesh_prim_paths=["/World/ground"],
+        update_period=0.02,
+    )
+    right_support_scanner = RayCasterCfg(
+        prim_path="{ENV_REGEX_NS}/Robot/right_ankle_roll_link",
+        offset=RayCasterCfg.OffsetCfg(pos=(0.0475, 0.0, 20.0)),
+        ray_alignment="yaw",
+        pattern_cfg=patterns.GridPatternCfg(resolution=0.02, size=[0.145, 0.06]),
+        debug_vis=False,
+        mesh_prim_paths=["/World/ground"],
+        update_period=0.02,
+    )
     contact_forces = ContactSensorCfg(prim_path="{ENV_REGEX_NS}/Robot/.*", history_length=3, track_air_time=True)
     leg_volume_points = VolumePointsCfg(
         prim_path="{ENV_REGEX_NS}/Robot/.*_ankle_roll_link",
@@ -633,7 +651,7 @@ class G1Rewards:
     )
     feet_edge_overlap = RewTerm(
         func=mdp.feet_edge_overlap,
-        weight=-1.0,
+        weight=0.0,
         params={
             "volume_points_cfg": SceneEntityCfg("leg_volume_points"),
             "contact_forces_cfg": SceneEntityCfg(
@@ -717,6 +735,24 @@ class G1Rewards:
             "right_height_scanner_cfg": SceneEntityCfg("right_height_scanner"),
             "asset_cfg": SceneEntityCfg("robot", body_names=".*_ankle_roll_link"),
             "height_offset": 0.035,
+        },
+    )
+    feet_support_deficit = RewTerm(
+        func=mdp.feet_support_deficit,
+        weight=-1.0,
+        params={
+            "contact_sensor_cfg": SceneEntityCfg(
+                "contact_forces", body_names=["left_ankle_roll_link", "right_ankle_roll_link"], preserve_order=True
+            ),
+            "left_support_scanner_cfg": SceneEntityCfg("left_support_scanner"),
+            "right_support_scanner_cfg": SceneEntityCfg("right_support_scanner"),
+            "asset_cfg": SceneEntityCfg(
+                "robot", body_names=["left_ankle_roll_link", "right_ankle_roll_link"], preserve_order=True
+            ),
+            "height_offset": 0.035,
+            "support_tolerance": 0.02,
+            "min_support_ratio": 0.7,
+            "contact_force_threshold": 1.0,
         },
     )
     feet_close_xy = RewTerm(

@@ -105,6 +105,7 @@ class ShoeConfigMixin:
         self.scene.leg_volume_points.points_generator.z_min = -0.063
         self.scene.leg_volume_points.points_generator.z_max = -0.023
         self.rewards.rewards.feet_at_plane.params["height_offset"] = 0.058
+        self.rewards.rewards.feet_support_deficit.params["height_offset"] = 0.058
 
 
 @configclass
