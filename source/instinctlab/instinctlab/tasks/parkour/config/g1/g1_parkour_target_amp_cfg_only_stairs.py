@@ -26,6 +26,10 @@ from instinctlab.tasks.parkour.config.parkour_env_cfg_onlystairs import (
 )
 
 __file_dir__ = os.path.dirname(os.path.realpath(__file__))
+MOTION_DATA_DIR = os.path.abspath(
+    os.path.join(__file_dir__, "../../../../../../../tool/dataset/division_npz")
+)
+MOTION_SELECTION_FILE = os.path.join(__file_dir__, "parkour_motion_terrain_conditioned_onlystairs.yaml")
 G1_CFG = copy.deepcopy(G1_29DOF_TORSOBASE_POPSICLE_CFG)
 G1_CFG.spawn.merge_fixed_joints = True
 G1_CFG.init_state.pos = (0.0, 0.0, 0.9)
@@ -37,10 +41,31 @@ G1_with_shoe_CFG.spawn.asset_path = os.path.abspath(
 
 @configclass
 class AmassMotionCfg(AmassMotionCfgBase):
-    path = os.path.expanduser("~/Datasets")
+    path = MOTION_DATA_DIR
     retargetting_func = None
-    filtered_motion_selection_filepath = os.path.expanduser("~/Datasets/parkour_motion_without_run.yaml")
+    filtered_motion_selection_filepath = MOTION_SELECTION_FILE
     motion_start_from_middle_range = [0.0, 0.9]
+    terrain_motion_file_patterns = {
+        "perlin_rough_stand": ["stand/*.npz"],
+        "perlin_rough": ["walk/*.npz"],
+        "pyramid_stairs": ["parkour_motion_without_run_retargetted.npz"],
+        "pyramid_stairs_high": ["parkour_motion_without_run_retargetted.npz"],
+        "pyramid_stairs_inv": ["parkour_motion_without_run_retargetted.npz"],
+        "pyramid_stairs_inv_high": ["parkour_motion_without_run_retargetted.npz"],
+        "dual_pyramid_course": ["parkour_motion_without_run_retargetted.npz"],
+    }
+    terrain_motion_start_from_middle_range = {
+        # Short clips start at frame zero so they provide the longest possible
+        # reference window before dataset_exhausted resets the environment.
+        "perlin_rough_stand": (0.0, 0.0),
+        "perlin_rough": (0.0, 0.0),
+        # The combined parkour sequence is long enough to sample throughout.
+        "pyramid_stairs": (0.0, 0.9),
+        "pyramid_stairs_high": (0.0, 0.9),
+        "pyramid_stairs_inv": (0.0, 0.9),
+        "pyramid_stairs_inv_high": (0.0, 0.9),
+        "dual_pyramid_course": (0.0, 0.0),
+    }
     motion_start_height_offset = 0.0
     ensure_link_below_zero_ground = False
     buffer_device = "output_device"

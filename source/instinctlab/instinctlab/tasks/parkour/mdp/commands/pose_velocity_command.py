@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import numpy as np
 import torch
 from collections.abc import Sequence
 from typing import TYPE_CHECKING
@@ -13,6 +12,8 @@ from isaaclab.managers import CommandTerm
 from isaaclab.markers import VisualizationMarkers
 from isaaclab.terrains import TerrainImporter
 from isaaclab.utils.math import quat_apply_inverse, wrap_to_pi, yaw_quat
+
+from instinctlab.terrains import resolve_subterrain_names_by_column
 
 if TYPE_CHECKING:
     from isaaclab.envs import ManagerBasedEnv
@@ -73,23 +74,13 @@ class PoseVelocityCommand(CommandTerm):
 
         if self.cfg.velocity_ranges is not None:
             terrain_generator_cfg = self.terrain.cfg.terrain_generator
-            proportions = np.array([sub_cfg.proportion for sub_cfg in terrain_generator_cfg.sub_terrains.values()])
-            proportions /= np.sum(proportions)
-
-            # find the sub-terrain index for each column
-            # we generate the terrains based on their proportion (not randomly sampled)
-            sub_indices = []
-            for index in range(terrain_generator_cfg.num_cols):
-                sub_index = np.min(np.where(index / terrain_generator_cfg.num_cols + 0.001 < np.cumsum(proportions))[0])
-                sub_indices.append(sub_index)
-            sub_indices = np.array(sub_indices, dtype=np.int32)
+            column_terrain_names = resolve_subterrain_names_by_column(terrain_generator_cfg)
             sub_terrains_names = list(terrain_generator_cfg.sub_terrains.keys())
             for key, value in self.cfg.velocity_ranges.items():
                 if key in sub_terrains_names:
-                    terrain_type_index = sub_terrains_names.index(key)
-                    type_indices = np.where(sub_indices == terrain_type_index)[0]
-                    for type_indice in type_indices:
-                        env_indices = torch.where(self.terrain.terrain_types == type_indice)[0]
+                    column_indices = [idx for idx, name in enumerate(column_terrain_names) if name == key]
+                    for column_idx in column_indices:
+                        env_indices = torch.where(self.terrain.terrain_types == column_idx)[0]
                         self.lin_vel_x_range[env_indices, 0] = value["lin_vel_x"][0]
                         self.lin_vel_x_range[env_indices, 1] = value["lin_vel_x"][1]
                         self.lin_vel_y_range[env_indices, 0] = value["lin_vel_y"][0]
@@ -101,10 +92,11 @@ class PoseVelocityCommand(CommandTerm):
 
             if self.cfg.random_velocity_terrain is not None:
                 for key in self.cfg.random_velocity_terrain:
-                    terrain_type_index = sub_terrains_names.index(key)
-                    type_indices = np.where(sub_indices == terrain_type_index)[0]
-                    for type_indice in type_indices:
-                        env_indices = torch.where(self.terrain.terrain_types == type_indice)[0]
+                    if key not in sub_terrains_names:
+                        raise RuntimeError(f"Terrain type {key} not found in the terrain generator sub-terrain names.")
+                    column_indices = [idx for idx, name in enumerate(column_terrain_names) if name == key]
+                    for column_idx in column_indices:
+                        env_indices = torch.where(self.terrain.terrain_types == column_idx)[0]
                         self.random_velocity_indices[env_indices] = True
 
         self.random_lin_vel_x_range[:, 0] = self.cfg.ranges.lin_vel_x[0]
@@ -276,11 +268,19 @@ class PoseVelocityCommand(CommandTerm):
             self.vel_command_b[:, 0] = torch.clamp(vx, min=min_x, max=max_x)
             self.vel_command_b[:, 1] = torch.clamp(vy, min=min_y, max=max_y)
 
-        self.vel_command_b[:, 2] = torch.clamp(
-            self.vel_command_b[:, 2],
-            self.cfg.ranges.ang_vel_z[0],
-            self.cfg.ranges.ang_vel_z[1],
-        )
+        if self.cfg.use_terrain_ang_vel_range:
+            self.vel_command_b[:, 2] = torch.maximum(
+                torch.minimum(self.vel_command_b[:, 2], self.ang_vel_z_range[:, 1]),
+                self.ang_vel_z_range[:, 0],
+            )
+        else:
+            # Preserve the original behavior for tasks that do not opt into
+            # terrain-specific yaw constraints (including ordinary Parkour).
+            self.vel_command_b[:, 2] = torch.clamp(
+                self.vel_command_b[:, 2],
+                self.cfg.ranges.ang_vel_z[0],
+                self.cfg.ranges.ang_vel_z[1],
+            )
         self.vel_command_b[:] *= (target_dist > self.cfg.target_dis_threshold).unsqueeze(-1)
         self.vel_command_b[:, :2] *= (
             (torch.norm(self.vel_command_b[:, :2], dim=1) > self.cfg.lin_vel_threshold).float().unsqueeze(-1)

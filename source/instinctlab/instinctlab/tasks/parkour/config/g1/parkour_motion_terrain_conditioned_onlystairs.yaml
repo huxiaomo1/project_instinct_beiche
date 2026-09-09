@@ -1,0 +1,18 @@
+selected_files:
+  - stand/stand_0001_f002975-003441_retargetted.npz
+  - stand/stand_0002_f008953-009208_retargetted.npz
+  - walk/walk_0001_f003441-003920_retargetted.npz
+  - walk/walk_0002_f003920-004400_retargetted.npz
+  - walk/walk_0003_f004400-004879_retargetted.npz
+  - walk/walk_0008_f006796-007227_retargetted.npz
+  - walk/walk_0009_f007227-007659_retargetted.npz
+  - walk/walk_0011_f008090-008522_retargetted.npz
+  - walk/walk_0012_f008522-008953_retargetted.npz
+  - walk/walk_0013_f009208-009667_retargetted.npz
+  - walk/walk_0014_f009667-010125_retargetted.npz
+  - walk/walk_0016_f010584-011042_retargetted.npz
+  - walk/walk_0017_f011042-011501_retargetted.npz
+  - walk/walk_0021_f013182-013665_retargetted.npz
+  - walk/walk_0022_f013665-014149_retargetted.npz
+  - walk/walk_0027_f016082-016565_retargetted.npz
+  - parkour_motion_without_run_retargetted.npz

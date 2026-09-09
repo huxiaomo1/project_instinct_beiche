@@ -56,7 +56,7 @@ ROUGH_TERRAINS_CFG_ONLYSTAIRS = TerrainGeneratorCfg(
     curriculum=True,#row控制terrain difficulty等级，column 在 curriculum 模式下主要负责：分配不同类型的地形
     sub_terrains={
         "perlin_rough": terrain_gen.PerlinPlaneTerrainCfg(
-            proportion=0.10,
+            proportion=0.25,
             noise_scale=[0.0, 0.1],
             noise_frequency=20,
             fractal_octaves=2,
@@ -73,7 +73,7 @@ ROUGH_TERRAINS_CFG_ONLYSTAIRS = TerrainGeneratorCfg(
             },
         ),
         "perlin_rough_stand": terrain_gen.PerlinPlaneTerrainCfg(
-            proportion=0.10,
+            proportion=0.25,
             noise_scale=[0.0, 0.1],
             noise_frequency=20,
             fractal_octaves=2,
@@ -90,7 +90,7 @@ ROUGH_TERRAINS_CFG_ONLYSTAIRS = TerrainGeneratorCfg(
             },
         ),
         "pyramid_stairs": terrain_gen.PerlinPyramidStairsTerrainCfg(
-            proportion=0.30,
+            proportion=0.25,
             step_height_range=(0.05, 0.23),
             step_width=0.3,
             platform_width=2.5,
@@ -117,7 +117,7 @@ ROUGH_TERRAINS_CFG_ONLYSTAIRS = TerrainGeneratorCfg(
             },
         ),
         "pyramid_stairs_high": terrain_gen.PerlinPyramidStairsTerrainCfg(
-            proportion=0.10,
+            proportion=0.0,
             step_height_range=(0.05, 0.45),
             step_width=1.5,
             platform_width=4.0,
@@ -144,7 +144,7 @@ ROUGH_TERRAINS_CFG_ONLYSTAIRS = TerrainGeneratorCfg(
             },
         ),
         "pyramid_stairs_inv": terrain_gen.PerlinInvertedPyramidStairsTerrainCfg(
-            proportion=0.30,
+            proportion=0.25,
             step_height_range=(0.05, 0.23),
             step_width=0.3,
             platform_width=2.5,
@@ -171,7 +171,7 @@ ROUGH_TERRAINS_CFG_ONLYSTAIRS = TerrainGeneratorCfg(
             },
         ),
         "pyramid_stairs_inv_high": terrain_gen.PerlinInvertedPyramidStairsTerrainCfg(
-            proportion=0.10,
+            proportion=0.0,
             step_height_range=(0.05, 0.45),
             step_width=1.5,
             platform_width=4.0,
@@ -199,6 +199,27 @@ ROUGH_TERRAINS_CFG_ONLYSTAIRS = TerrainGeneratorCfg(
         ),
     },
 )
+
+# OnlyStairs training groups. They condition the AMP discriminator so that a
+# zero-command stand environment is compared only with stand demonstrations,
+# flat walking only with walk demonstrations, and stair terrains with parkour.
+ONLYSTAIRS_AMP_TERRAIN_NAME_GROUPS = [
+    ["perlin_rough_stand"],
+    ["perlin_rough"],
+    [
+        "pyramid_stairs",
+        "pyramid_stairs_high",
+        "pyramid_stairs_inv",
+        "pyramid_stairs_inv_high",
+        "dual_pyramid_course",
+    ],
+]
+
+# Conservative first-stage ranges chosen to overlap the retargeted data. They
+# can be widened after stable standing, flat walking, and basic stairs converge.
+ONLYSTAIRS_COMMAND_RESAMPLE_TIME_RANGE = (4.0, 7.0)
+ONLYSTAIRS_FLAT_WALK_SPEED_RANGE = (0.2, 0.65)
+ONLYSTAIRS_STAIRS_SPEED_RANGE = (0.3, 0.6)
 
 
 PLAY_DUAL_PYRAMID_SPAWN_X = -10.5
@@ -482,6 +503,11 @@ class ObservationsCfg:
     @configclass
     class AmpPolicyStateObsCfg(ObsGroup):
         concatenate_terms = False
+        terrain_context = ObsTerm(
+            func=mdp.terrain_type_one_hot,
+            params={"terrain_name_groups": ONLYSTAIRS_AMP_TERRAIN_NAME_GROUPS},
+            noise=None,
+        )
         projected_gravity = ObsTerm(
             func=mdp.projected_gravity,
             params={
@@ -532,6 +558,11 @@ class ObservationsCfg:
     @configclass
     class AmpReferenceStateObsCfg(ObsGroup):
         concatenate_terms = False
+        terrain_context = ObsTerm(
+            func=mdp.terrain_type_one_hot,
+            params={"terrain_name_groups": ONLYSTAIRS_AMP_TERRAIN_NAME_GROUPS},
+            noise=None,
+        )
         projected_gravity = ObsTerm(
             func=mdp.projected_gravity_reference_as_state,
             params={
@@ -597,25 +628,48 @@ class CommandsCfg:
 
     base_velocity = mdp.PoseVelocityCommandCfg(
         asset_name="robot",
-        resampling_time_range=(8.0, 12.0),
+        resampling_time_range=ONLYSTAIRS_COMMAND_RESAMPLE_TIME_RANGE,
         debug_vis=False,
         velocity_control_stiffness=2.0,
         heading_control_stiffness=2.0,
-        rel_standing_envs=0.05,
-        ranges=mdp.PoseVelocityCommandCfg.Ranges(lin_vel_x=(0.0, 0.0), lin_vel_y=(0.0, 0.0), ang_vel_z=(-1.0, 1.0)),
-        random_velocity_terrain=["perlin_rough_stand"],
+        rel_standing_envs=0.0,
+        # Flat walking uses direct velocity sampling and therefore never gets
+        # an accidental zero command from a nearby/behind position target.
+        ranges=mdp.PoseVelocityCommandCfg.Ranges(
+            lin_vel_x=ONLYSTAIRS_FLAT_WALK_SPEED_RANGE,
+            lin_vel_y=(0.0, 0.0),
+            ang_vel_z=(0.0, 0.0),
+        ),
+        random_velocity_terrain=["perlin_rough"],
         velocity_ranges={
-            "perlin_rough": {"lin_vel_x": (0.45, 1.0), "lin_vel_y": (0.0, 0.0), "ang_vel_z": (-1.0, 1.0)},
-            "perlin_rough_stand": {"lin_vel_x": (0.0, 0.0), "lin_vel_y": (0.0, 0.0), "ang_vel_z": (0.0, 0.0)},
-            "pyramid_stairs": {"lin_vel_x": (0.45, 0.8), "lin_vel_y": (0.0, 0.0), "ang_vel_z": (-1.0, 1.0)},
-            "pyramid_stairs_high": {"lin_vel_x": (0.45, 0.8), "lin_vel_y": (0.0, 0.0), "ang_vel_z": (-1.0, 1.0)},
-            "pyramid_stairs_inv": {"lin_vel_x": (0.45, 0.8), "lin_vel_y": (0.0, 0.0), "ang_vel_z": (-1.0, 1.0)},
-            "pyramid_stairs_inv_high": {
-                "lin_vel_x": (0.45, 0.8),
+            "perlin_rough": {
+                "lin_vel_x": ONLYSTAIRS_FLAT_WALK_SPEED_RANGE,
                 "lin_vel_y": (0.0, 0.0),
-                "ang_vel_z": (-1.0, 1.0),
+                "ang_vel_z": (0.0, 0.0),
+            },
+            "perlin_rough_stand": {"lin_vel_x": (0.0, 0.0), "lin_vel_y": (0.0, 0.0), "ang_vel_z": (0.0, 0.0)},
+            "pyramid_stairs": {
+                "lin_vel_x": ONLYSTAIRS_STAIRS_SPEED_RANGE,
+                "lin_vel_y": (0.0, 0.0),
+                "ang_vel_z": (-0.5, 0.5),
+            },
+            "pyramid_stairs_high": {
+                "lin_vel_x": ONLYSTAIRS_STAIRS_SPEED_RANGE,
+                "lin_vel_y": (0.0, 0.0),
+                "ang_vel_z": (-0.5, 0.5),
+            },
+            "pyramid_stairs_inv": {
+                "lin_vel_x": ONLYSTAIRS_STAIRS_SPEED_RANGE,
+                "lin_vel_y": (0.0, 0.0),
+                "ang_vel_z": (-0.5, 0.5),
+            },
+            "pyramid_stairs_inv_high": {
+                "lin_vel_x": ONLYSTAIRS_STAIRS_SPEED_RANGE,
+                "lin_vel_y": (0.0, 0.0),
+                "ang_vel_z": (-0.5, 0.5),
             },
         },
+        use_terrain_ang_vel_range=True,
         only_positive_lin_vel_x=True,
         lin_vel_threshold=0.0,
         ang_vel_threshold=0.0,
@@ -845,6 +899,12 @@ class TerminationsCfg:
 @configclass
 class EventCfg:
     """Configuration for events."""
+
+    match_motion_ref_with_scene = EventTerm(
+        func=instinct_mdp.match_motion_ref_with_scene,
+        mode="startup",
+        params={"motion_ref_cfg": SceneEntityCfg("motion_reference")},
+    )
 
     physics_material = EventTerm(
         func=mdp.randomize_rigid_body_material,

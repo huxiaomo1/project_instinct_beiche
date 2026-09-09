@@ -49,6 +49,9 @@ class PoseVelocityCommandCfg(CommandTermCfg):
     velocity_ranges: dict = None
     """Dictionary containing velocity ranges for different terrains. If not None, the velocity ranges will be set based on the terrain type."""
 
+    use_terrain_ang_vel_range: bool = False
+    """Whether to clamp yaw commands with per-terrain bounds instead of the global range."""
+
     lin_vel_threshold: float = 0.15
     """Minimal threshold for the linear velocity command (in m/s)."""
 

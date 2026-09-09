@@ -5,6 +5,7 @@ import os
 import pickle as pkl
 import yaml
 from collections.abc import Sequence
+from fnmatch import fnmatch
 from typing import TYPE_CHECKING
 
 import isaaclab.utils.math as math_utils
@@ -12,6 +13,7 @@ import isaaclab.utils.math as math_utils
 from instinctlab.motion_reference import MotionReferenceData, MotionReferenceState, MotionSequence
 from instinctlab.motion_reference.motion_buffer import MotionBuffer
 from instinctlab.motion_reference.utils import estimate_angular_velocity, estimate_velocity
+from instinctlab.terrains import resolve_subterrain_names_by_column
 from instinctlab.utils.torch import ConcatBatchTensor
 
 if TYPE_CHECKING:
@@ -189,6 +191,47 @@ class AmassMotion(MotionBuffer):
             device=self.output_device,
             dtype=torch.bool,
         )
+
+    def match_scene(self, scene) -> None:
+        """Build terrain-conditioned motion candidate pools after terrain creation."""
+        if self.cfg.terrain_motion_file_patterns is None:
+            return
+
+        terrain = scene["terrain"]
+        terrain_generator_cfg = terrain.cfg.terrain_generator
+        if terrain_generator_cfg is None:
+            raise ValueError("Terrain-conditioned motion sampling requires a generated terrain.")
+
+        column_names = resolve_subterrain_names_by_column(terrain_generator_cfg)
+        relative_motion_paths = [
+            os.path.relpath(filepath, self.cfg.path).replace(os.sep, "/") for filepath in self._all_motion_files
+        ]
+        candidate_ids_by_name: dict[str, torch.Tensor] = {}
+        for terrain_name in set(column_names):
+            patterns = self.cfg.terrain_motion_file_patterns.get(terrain_name)
+            if not patterns:
+                raise ValueError(f"No motion-file patterns configured for generated terrain '{terrain_name}'.")
+            candidate_ids = [
+                motion_id
+                for motion_id, relative_path in enumerate(relative_motion_paths)
+                if any(fnmatch(relative_path, pattern) for pattern in patterns)
+            ]
+            if not candidate_ids:
+                raise ValueError(
+                    f"No loaded motion files match terrain '{terrain_name}' patterns {patterns}. "
+                    f"Dataset root: {self.cfg.path}"
+                )
+            candidate_ids_by_name[terrain_name] = torch.tensor(
+                candidate_ids, dtype=torch.long, device=self.buffer_device
+            )
+
+        self._terrain_types = terrain.terrain_types
+        self._terrain_name_by_column = column_names
+        self._motion_candidate_ids_by_column = [candidate_ids_by_name[name] for name in column_names]
+
+        # set_env_ids_assignments() runs before the startup scene-matching event,
+        # so replace its initial unconditioned samples immediately.
+        self._sample_assigned_env_starting_stub()
 
     def fill_init_reference_state(
         self,
@@ -846,11 +889,28 @@ class AmassMotion(MotionBuffer):
         """
         if len(assigned_ids) == 0:
             return
-        self._assigned_env_motion_selection[assigned_ids] = torch.multinomial(
-            self._motion_weights,
-            len(assigned_ids),
-            replacement=True,
-        ).to(self.buffer_device)
+        if not hasattr(self, "_motion_candidate_ids_by_column"):
+            self._assigned_env_motion_selection[assigned_ids] = torch.multinomial(
+                self._motion_weights,
+                len(assigned_ids),
+                replacement=True,
+            ).to(self.buffer_device)
+            return
+
+        assigned_ids = torch.as_tensor(assigned_ids, dtype=torch.long, device=self.buffer_device)
+        env_ids = assigned_ids.to(self.output_device) + self.assigned_env_slice.start
+        terrain_columns = self._terrain_types[env_ids].to(self.buffer_device)
+        for column_idx in torch.unique(terrain_columns).tolist():
+            selection_mask = terrain_columns == column_idx
+            candidate_ids = self._motion_candidate_ids_by_column[column_idx]
+            candidate_weights = self._motion_weights[candidate_ids]
+            candidate_weights = candidate_weights / candidate_weights.sum()
+            sampled_local_ids = torch.multinomial(
+                candidate_weights,
+                int(selection_mask.sum().item()),
+                replacement=True,
+            )
+            self._assigned_env_motion_selection[assigned_ids[selection_mask]] = candidate_ids[sampled_local_ids]
 
     def _sample_env_motion_start_time(self, assigned_ids: Sequence[int] | torch.Tensor) -> None:
         """Sample the start time for the assigned envs. (at reset)
@@ -858,29 +918,41 @@ class AmassMotion(MotionBuffer):
         """
         assert assigned_ids is not None  # type: ignore
 
-        if self.cfg.motion_start_from_middle_range[1] > 0.0:
-            assert (
-                self.cfg.motion_start_from_middle_range[0] >= 0
-                and self.cfg.motion_start_from_middle_range[1] >= self.cfg.motion_start_from_middle_range[0]
-            ), (
-                "motion_start_from_middle_range should be non-negative and the second value should be larger than the"
-                " first one."
-            )
-            random_start_time = (
-                torch.rand(
-                    len(assigned_ids),
-                    device=self.buffer_device,
+        assigned_ids = torch.as_tensor(assigned_ids, dtype=torch.long, device=self.buffer_device)
+        self._motion_buffer_start_time_s[assigned_ids] = 0.0
+
+        range_groups: list[tuple[torch.Tensor, tuple[float, float] | list[float]]] = []
+        if (
+            self.cfg.terrain_motion_start_from_middle_range is not None
+            and hasattr(self, "_motion_candidate_ids_by_column")
+        ):
+            env_ids = assigned_ids.to(self.output_device) + self.assigned_env_slice.start
+            terrain_columns = self._terrain_types[env_ids].to(self.buffer_device)
+            for column_idx in torch.unique(terrain_columns).tolist():
+                terrain_name = self._terrain_name_by_column[column_idx]
+                start_range = self.cfg.terrain_motion_start_from_middle_range.get(
+                    terrain_name, self.cfg.motion_start_from_middle_range
                 )
-                * (self.cfg.motion_start_from_middle_range[1] - self.cfg.motion_start_from_middle_range[0])
-                + self.cfg.motion_start_from_middle_range[0]
+                range_groups.append((assigned_ids[terrain_columns == column_idx], start_range))
+        else:
+            range_groups.append((assigned_ids, self.cfg.motion_start_from_middle_range))
+
+        for group_assigned_ids, start_range in range_groups:
+            if len(group_assigned_ids) == 0:
+                continue
+            if start_range[0] < 0.0 or start_range[1] < start_range[0] or start_range[1] > 1.0:
+                raise ValueError(f"Invalid motion_start_from_middle_range: {start_range}")
+            if start_range[1] == 0.0:
+                continue
+            random_start_time = (
+                torch.rand(len(group_assigned_ids), device=self.buffer_device)
+                * (start_range[1] - start_range[0])
+                + start_range[0]
             )
-            random_start_time *= self._all_motion_sequences.buffer_length[
-                self._assigned_env_motion_selection[assigned_ids]
-            ].to(torch.float)
-            random_start_time /= self._all_motion_sequences.framerate[
-                self._assigned_env_motion_selection[assigned_ids]
-            ].to(torch.float)
-            self._motion_buffer_start_time_s[assigned_ids] = random_start_time
+            selected_motion_ids = self._assigned_env_motion_selection[group_assigned_ids]
+            random_start_time *= self._all_motion_sequences.buffer_length[selected_motion_ids].to(torch.float)
+            random_start_time /= self._all_motion_sequences.framerate[selected_motion_ids].to(torch.float)
+            self._motion_buffer_start_time_s[group_assigned_ids] = random_start_time
 
         if hasattr(self, "_motion_bin_weights"):
             motion_ids = self._assigned_env_motion_selection[assigned_ids]

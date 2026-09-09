@@ -88,6 +88,22 @@ class AmassMotionCfg(MotionBufferCfg):
         If not provided, all motions will be assigned equal weights.
     """
 
+    terrain_motion_file_patterns: dict[str, list[str]] | None = None
+    """Optional mapping from sub-terrain name to allowed motion-file glob patterns.
+
+    Patterns are matched against paths relative to :attr:`path`. When configured,
+    every generated sub-terrain must have an entry and every entry must match at
+    least one loaded motion. This allows one AMASS buffer to draw different expert
+    motions for stand, walk, and obstacle environments.
+    """
+
+    terrain_motion_start_from_middle_range: dict[str, tuple[float, float]] | None = None
+    """Optional per-sub-terrain override of ``motion_start_from_middle_range``.
+
+    This is useful when short stand/walk clips should start at their beginning but
+    a long parkour recording should be sampled throughout its duration.
+    """
+
     subset_selection: dict[str, list[str]] | None = None
     """ the subset of the subset selection.
         For example a subset of CMU dataset among the whole AMASS dataset.
