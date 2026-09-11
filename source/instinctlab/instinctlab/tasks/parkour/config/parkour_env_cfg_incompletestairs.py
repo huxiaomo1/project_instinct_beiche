@@ -43,7 +43,7 @@ STAIR_EDGE_REGION_RADIUS = 0.05
 ##
 # Scene definition
 ##
-ROUGH_TERRAINS_CFG_ONLYSTAIRS = TerrainGeneratorCfg(
+ROUGH_TERRAINS_CFG_INCOMPLETE_STAIRS = TerrainGeneratorCfg(
     seed=0,
     size=(8.0, 8.0),
     border_width=3,
@@ -89,12 +89,17 @@ ROUGH_TERRAINS_CFG_ONLYSTAIRS = TerrainGeneratorCfg(
                 ),
             },
         ),
-        "pyramid_stairs": terrain_gen.PerlinPyramidStairsTerrainCfg(
+        "incomplete_pyramid_stairs": terrain_gen.IncompletePerlinPyramidStairsTerrainCfg(
             proportion=0.25,
             step_height_range=(0.05, 0.23),
             step_width=0.3,
             platform_width=2.5,
             border_width=1.0,
+            defect_probability=0.7,
+            defect_type="random",
+            defect_step_range=(2, 6),
+            defect_corridor_width=1.2,
+            defect_direction="x_neg",
             wall_prob=[0.3, 0.3, 0.3, 0.3],
             wall_height=5.0,
             wall_thickness=0.05,
@@ -116,12 +121,17 @@ ROUGH_TERRAINS_CFG_ONLYSTAIRS = TerrainGeneratorCfg(
                 ),
             },
         ),
-        "pyramid_stairs_high": terrain_gen.PerlinPyramidStairsTerrainCfg(
+        "incomplete_pyramid_stairs_high": terrain_gen.IncompletePerlinPyramidStairsTerrainCfg(
             proportion=0.0,
             step_height_range=(0.05, 0.45),
             step_width=1.5,
             platform_width=4.0,
             border_width=1.0,
+            defect_probability=0.7,
+            defect_type="random",
+            defect_step_range=(2, 6),
+            defect_corridor_width=1.2,
+            defect_direction="x_neg",
             wall_prob=[0.3, 0.3, 0.3, 0.3],
             wall_height=5.0,
             wall_thickness=0.05,
@@ -143,12 +153,17 @@ ROUGH_TERRAINS_CFG_ONLYSTAIRS = TerrainGeneratorCfg(
                 ),
             },
         ),
-        "pyramid_stairs_inv": terrain_gen.PerlinInvertedPyramidStairsTerrainCfg(
+        "incomplete_pyramid_stairs_inv": terrain_gen.IncompletePerlinInvertedPyramidStairsTerrainCfg(
             proportion=0.25,
             step_height_range=(0.05, 0.23),
             step_width=0.3,
             platform_width=2.5,
             border_width=1.0,
+            defect_probability=0.7,
+            defect_type="random",
+            defect_step_range=(2, 6),
+            defect_corridor_width=1.2,
+            defect_direction="x_neg",
             wall_prob=[0.3, 0.3, 0.3, 0.3],
             wall_height=5.0,
             wall_thickness=0.05,
@@ -170,12 +185,17 @@ ROUGH_TERRAINS_CFG_ONLYSTAIRS = TerrainGeneratorCfg(
                 ),
             },
         ),
-        "pyramid_stairs_inv_high": terrain_gen.PerlinInvertedPyramidStairsTerrainCfg(
+        "incomplete_pyramid_stairs_inv_high": terrain_gen.IncompletePerlinInvertedPyramidStairsTerrainCfg(
             proportion=0.0,
             step_height_range=(0.05, 0.45),
             step_width=1.5,
             platform_width=4.0,
             border_width=1.0,
+            defect_probability=0.7,
+            defect_type="random",
+            defect_step_range=(2, 6),
+            defect_corridor_width=1.2,
+            defect_direction="x_neg",
             wall_prob=[0.3, 0.3, 0.3, 0.3],
             wall_height=5.0,
             wall_thickness=0.05,
@@ -200,26 +220,26 @@ ROUGH_TERRAINS_CFG_ONLYSTAIRS = TerrainGeneratorCfg(
     },
 )
 
-# OnlyStairs training groups. They condition the AMP discriminator so that a
+# Incomplete-stairs training groups. They condition the AMP discriminator so that a
 # zero-command stand environment is compared only with stand demonstrations,
 # flat walking only with walk demonstrations, and stair terrains with parkour.
-ONLYSTAIRS_AMP_TERRAIN_NAME_GROUPS = [
+INCOMPLETE_STAIRS_AMP_TERRAIN_NAME_GROUPS = [
     ["perlin_rough_stand"],
     ["perlin_rough"],
     [
-        "pyramid_stairs",
-        "pyramid_stairs_high",
-        "pyramid_stairs_inv",
-        "pyramid_stairs_inv_high",
+        "incomplete_pyramid_stairs",
+        "incomplete_pyramid_stairs_high",
+        "incomplete_pyramid_stairs_inv",
+        "incomplete_pyramid_stairs_inv_high",
         "dual_pyramid_course",
     ],
 ]
 
 # Conservative first-stage ranges chosen to overlap the retargeted data. They
 # can be widened after stable standing, flat walking, and basic stairs converge.
-ONLYSTAIRS_COMMAND_RESAMPLE_TIME_RANGE = (4.0, 7.0)
-ONLYSTAIRS_FLAT_WALK_SPEED_RANGE = (0.2, 0.65)
-ONLYSTAIRS_STAIRS_SPEED_RANGE = (0.3, 0.6)
+INCOMPLETE_STAIRS_COMMAND_RESAMPLE_TIME_RANGE = (4.0, 7.0)
+INCOMPLETE_STAIRS_FLAT_WALK_SPEED_RANGE = (0.2, 0.65)
+INCOMPLETE_STAIRS_STAIRS_SPEED_RANGE = (0.3, 0.6)
 
 
 PLAY_DUAL_PYRAMID_SPAWN_X = -10.5
@@ -270,7 +290,7 @@ class SceneCfg(InteractiveSceneCfg):
     terrain = TerrainImporterCfg(
         prim_path="/World/ground",
         terrain_type="generator",
-        terrain_generator=ROUGH_TERRAINS_CFG_ONLYSTAIRS,
+        terrain_generator=ROUGH_TERRAINS_CFG_INCOMPLETE_STAIRS,
         max_init_terrain_level=5,
         collision_group=-1,
         physics_material=sim_utils.RigidBodyMaterialCfg(
@@ -505,7 +525,7 @@ class ObservationsCfg:
         concatenate_terms = False
         terrain_context = ObsTerm(
             func=mdp.terrain_type_one_hot,
-            params={"terrain_name_groups": ONLYSTAIRS_AMP_TERRAIN_NAME_GROUPS},
+            params={"terrain_name_groups": INCOMPLETE_STAIRS_AMP_TERRAIN_NAME_GROUPS},
             noise=None,
         )
         projected_gravity = ObsTerm(
@@ -560,7 +580,7 @@ class ObservationsCfg:
         concatenate_terms = False
         terrain_context = ObsTerm(
             func=mdp.terrain_type_one_hot,
-            params={"terrain_name_groups": ONLYSTAIRS_AMP_TERRAIN_NAME_GROUPS},
+            params={"terrain_name_groups": INCOMPLETE_STAIRS_AMP_TERRAIN_NAME_GROUPS},
             noise=None,
         )
         projected_gravity = ObsTerm(
@@ -628,7 +648,7 @@ class CommandsCfg:
 
     base_velocity = mdp.PoseVelocityCommandCfg(
         asset_name="robot",
-        resampling_time_range=ONLYSTAIRS_COMMAND_RESAMPLE_TIME_RANGE,
+        resampling_time_range=INCOMPLETE_STAIRS_COMMAND_RESAMPLE_TIME_RANGE,
         debug_vis=False,
         velocity_control_stiffness=2.0,
         heading_control_stiffness=2.0,
@@ -636,35 +656,35 @@ class CommandsCfg:
         # Flat walking uses direct velocity sampling and therefore never gets
         # an accidental zero command from a nearby/behind position target.
         ranges=mdp.PoseVelocityCommandCfg.Ranges(
-            lin_vel_x=ONLYSTAIRS_FLAT_WALK_SPEED_RANGE,
+            lin_vel_x=INCOMPLETE_STAIRS_FLAT_WALK_SPEED_RANGE,
             lin_vel_y=(0.0, 0.0),
             ang_vel_z=(0.0, 0.0),
         ),
         random_velocity_terrain=["perlin_rough"],
         velocity_ranges={
             "perlin_rough": {
-                "lin_vel_x": ONLYSTAIRS_FLAT_WALK_SPEED_RANGE,
+                "lin_vel_x": INCOMPLETE_STAIRS_FLAT_WALK_SPEED_RANGE,
                 "lin_vel_y": (0.0, 0.0),
                 "ang_vel_z": (0.0, 0.0),
             },
             "perlin_rough_stand": {"lin_vel_x": (0.0, 0.0), "lin_vel_y": (0.0, 0.0), "ang_vel_z": (0.0, 0.0)},
-            "pyramid_stairs": {
-                "lin_vel_x": ONLYSTAIRS_STAIRS_SPEED_RANGE,
+            "incomplete_pyramid_stairs": {
+                "lin_vel_x": INCOMPLETE_STAIRS_STAIRS_SPEED_RANGE,
                 "lin_vel_y": (0.0, 0.0),
                 "ang_vel_z": (-0.5, 0.5),
             },
-            "pyramid_stairs_high": {
-                "lin_vel_x": ONLYSTAIRS_STAIRS_SPEED_RANGE,
+            "incomplete_pyramid_stairs_high": {
+                "lin_vel_x": INCOMPLETE_STAIRS_STAIRS_SPEED_RANGE,
                 "lin_vel_y": (0.0, 0.0),
                 "ang_vel_z": (-0.5, 0.5),
             },
-            "pyramid_stairs_inv": {
-                "lin_vel_x": ONLYSTAIRS_STAIRS_SPEED_RANGE,
+            "incomplete_pyramid_stairs_inv": {
+                "lin_vel_x": INCOMPLETE_STAIRS_STAIRS_SPEED_RANGE,
                 "lin_vel_y": (0.0, 0.0),
                 "ang_vel_z": (-0.5, 0.5),
             },
-            "pyramid_stairs_inv_high": {
-                "lin_vel_x": ONLYSTAIRS_STAIRS_SPEED_RANGE,
+            "incomplete_pyramid_stairs_inv_high": {
+                "lin_vel_x": INCOMPLETE_STAIRS_STAIRS_SPEED_RANGE,
                 "lin_vel_y": (0.0, 0.0),
                 "ang_vel_z": (-0.5, 0.5),
             },

@@ -206,6 +206,153 @@ def perlin_pyramid_stairs_terrain(difficulty: float, cfg: hf_terrains_cfg.Perlin
 
 @generate_wall
 @height_field_to_mesh
+def incomplete_perlin_pyramid_stairs_terrain(
+    difficulty: float, cfg: hf_terrains_cfg.IncompletePerlinPyramidStairsTerrainCfg
+) -> np.ndarray:
+    """Generate pyramid stairs with one local missing-step or ramp defect.
+
+    A regular (or inverted) pyramid staircase is generated first. With
+    ``defect_probability``, one stair from ``defect_step_range`` is modified
+    only inside a centered corridor on the selected side of the pyramid.
+    Perlin noise is added after the geometric defect, just as it is for the
+    regular pyramid-stairs terrain.
+
+    Stair indices start at one on the outermost stair and increase toward the
+    center platform. The outer ground and center platform are never selected.
+    ``x_pos``/``y_pos`` describe travel from the negative edge toward the
+    center; ``x_neg``/``y_neg`` describe travel from the positive edge toward
+    the center.
+    """
+    valid_defect_types = {"random", "missing", "ramp"}
+    valid_directions = {"x_pos", "x_neg", "y_pos", "y_neg"}
+    if cfg.defect_type not in valid_defect_types:
+        raise ValueError(f"defect_type must be one of {sorted(valid_defect_types)}, got {cfg.defect_type!r}.")
+    if cfg.defect_direction not in valid_directions:
+        raise ValueError(f"defect_direction must be one of {sorted(valid_directions)}, got {cfg.defect_direction!r}.")
+    if not 0.0 <= cfg.defect_probability <= 1.0:
+        raise ValueError(f"defect_probability must be in [0, 1], got {cfg.defect_probability}.")
+    if cfg.step_width <= 0.0 or cfg.platform_width <= 0.0:
+        raise ValueError("step_width and platform_width must be positive.")
+    if cfg.defect_corridor_width <= 0.0:
+        raise ValueError("defect_corridor_width must be positive.")
+    if len(cfg.defect_step_range) != 2:
+        raise ValueError("defect_step_range must contain exactly two stair indices.")
+    requested_step_min, requested_step_max = cfg.defect_step_range
+    if not isinstance(requested_step_min, int) or not isinstance(requested_step_max, int):
+        raise TypeError("defect_step_range values must be integers.")
+    if requested_step_min > requested_step_max:
+        raise ValueError("defect_step_range must be ordered as (minimum, maximum).")
+
+    # Resolve the same difficulty-dependent height used by the regular stairs.
+    step_height = cfg.step_height_range[0] + difficulty * (cfg.step_height_range[1] - cfg.step_height_range[0])
+    if cfg.inverted:
+        step_height *= -1
+
+    width_pixels = int(cfg.size[0] / cfg.horizontal_scale)
+    length_pixels = int(cfg.size[1] / cfg.horizontal_scale)
+    step_width = round(cfg.step_width / cfg.horizontal_scale)
+    step_height = round(step_height / cfg.vertical_scale)
+    platform_width = round(cfg.platform_width / cfg.horizontal_scale)
+    if width_pixels <= 0 or length_pixels <= 0:
+        raise ValueError("Terrain size must contain at least one height-field sample per axis.")
+    if step_width <= 0:
+        raise ValueError("step_width must be at least one horizontal height-field sample.")
+    if platform_width <= 0:
+        raise ValueError("platform_width must be at least one horizontal height-field sample.")
+
+    transverse_size = cfg.size[1] if cfg.defect_direction.startswith("x_") else cfg.size[0]
+    if cfg.defect_corridor_width > transverse_size:
+        raise ValueError(
+            f"defect_corridor_width ({cfg.defect_corridor_width}) exceeds the transverse terrain size "
+            f"({transverse_size})."
+        )
+
+    # First build an ordinary pyramid staircase and retain every nested level.
+    hf_raw = np.zeros((width_pixels, length_pixels))
+    stair_levels: list[tuple[int, int, int, int, int]] = []
+    current_step_height = 0
+    start_x, start_y = 0, 0
+    stop_x, stop_y = width_pixels, length_pixels
+    while (stop_x - start_x) > platform_width and (stop_y - start_y) > platform_width:
+        next_start_x, next_stop_x = start_x + step_width, stop_x - step_width
+        next_start_y, next_stop_y = start_y + step_width, stop_y - step_width
+        if next_start_x >= next_stop_x or next_start_y >= next_stop_y:
+            break
+        start_x, stop_x = next_start_x, next_stop_x
+        start_y, stop_y = next_start_y, next_stop_y
+        current_step_height += step_height
+        hf_raw[start_x:stop_x, start_y:stop_y] = current_step_height
+        stair_levels.append((start_x, stop_x, start_y, stop_y, current_step_height))
+
+    # The last nested rectangle is the center platform, hence is not eligible.
+    num_defectable_stairs = max(len(stair_levels) - 1, 0)
+    if num_defectable_stairs > 0 and cfg.defect_probability > 0.0:
+        if np.random.random() < cfg.defect_probability:
+            step_min = int(np.clip(requested_step_min, 1, num_defectable_stairs))
+            step_max = int(np.clip(requested_step_max, 1, num_defectable_stairs))
+            if step_min > step_max:
+                step_min, step_max = step_max, step_min
+            defect_step = int(np.random.randint(step_min, step_max + 1))
+            defect_type = cfg.defect_type
+            if defect_type == "random":
+                defect_type = "missing" if np.random.random() < 0.5 else "ramp"
+
+            start_x, stop_x, start_y, stop_y, current_height = stair_levels[defect_step - 1]
+            previous_height = current_height - step_height
+            corridor_width = max(1, round(cfg.defect_corridor_width / cfg.horizontal_scale))
+
+            if cfg.defect_direction.startswith("x_"):
+                transverse_step_width = stop_y - start_y
+                corridor_width = min(corridor_width, transverse_step_width)
+                corridor_start = start_y + (transverse_step_width - corridor_width) // 2
+                y_slice = slice(corridor_start, corridor_start + corridor_width)
+                if cfg.defect_direction == "x_pos":
+                    x_slice = slice(start_x, min(start_x + step_width, stop_x))
+                    reverse_ramp = False
+                else:
+                    x_slice = slice(max(stop_x - step_width, start_x), stop_x)
+                    reverse_ramp = True
+                defect_length = x_slice.stop - x_slice.start
+                defect_slices = (x_slice, y_slice)
+                ramp_shape = (defect_length, 1)
+            else:
+                transverse_step_width = stop_x - start_x
+                corridor_width = min(corridor_width, transverse_step_width)
+                corridor_start = start_x + (transverse_step_width - corridor_width) // 2
+                x_slice = slice(corridor_start, corridor_start + corridor_width)
+                if cfg.defect_direction == "y_pos":
+                    y_slice = slice(start_y, min(start_y + step_width, stop_y))
+                    reverse_ramp = False
+                else:
+                    y_slice = slice(max(stop_y - step_width, start_y), stop_y)
+                    reverse_ramp = True
+                defect_length = y_slice.stop - y_slice.start
+                defect_slices = (x_slice, y_slice)
+                ramp_shape = (1, defect_length)
+
+            if defect_type == "missing":
+                # Lowering tread k to k-1 creates a 2h rise to tread k+1.
+                hf_raw[defect_slices] = previous_height
+            elif defect_length > 0:
+                # Values are ordered along the physical travel direction.
+                ramp = np.linspace(previous_height, current_height, defect_length)
+                if reverse_ramp:
+                    ramp = ramp[::-1]
+                hf_raw[defect_slices] = ramp.reshape(ramp_shape)
+
+    if cfg.perlin_cfg is not None:
+        perlin_cfg = cfg.perlin_cfg
+        perlin_cfg.size = cfg.size
+        perlin_cfg.horizontal_scale = cfg.horizontal_scale
+        perlin_cfg.vertical_scale = cfg.vertical_scale
+        perlin_cfg.slope_threshold = cfg.slope_threshold
+        hf_raw += generate_perlin_noise(difficulty, perlin_cfg)  # type: ignore[arg-type]
+
+    return np.rint(hf_raw).astype(np.int16)
+
+
+@generate_wall
+@height_field_to_mesh
 def dual_pyramid_stairs_terrain(difficulty: float, cfg: hf_terrains_cfg.DualPyramidStairsTerrainCfg) -> np.ndarray:
     """Generate a straight course with an inverted pyramid followed by a positive pyramid."""
     del difficulty  # The play course is deterministic.

@@ -38,25 +38,24 @@ from instinctlab.utils.noise import (
 )
 
 __file_dir__ = os.path.dirname(os.path.realpath(__file__))
-STAIR_EDGE_REGION_RADIUS = 0.05
 
 ##
 # Scene definition
 ##
-ROUGH_TERRAINS_CFG_ONLYSTAIRS = TerrainGeneratorCfg(
+ROUGH_TERRAINS_CFG = TerrainGeneratorCfg(
     seed=0,
     size=(8.0, 8.0),
     border_width=3,
     num_rows=10,
     num_cols=20,
-    horizontal_scale=0.05,#heightfield 地形的：XY 平面的离散分辨率。
-    vertical_scale=0.005,#heightfield 地形的：z方向的离散分辨率。
+    horizontal_scale=0.05,
+    vertical_scale=0.005,
     slope_threshold=1.0,
     use_cache=False,
-    curriculum=True,#row控制terrain difficulty等级，column 在 curriculum 模式下主要负责：分配不同类型的地形
+    curriculum=True,
     sub_terrains={
         "perlin_rough": terrain_gen.PerlinPlaneTerrainCfg(
-            proportion=0.25,
+            proportion=0.05,
             noise_scale=[0.0, 0.1],
             noise_frequency=20,
             fractal_octaves=2,
@@ -73,7 +72,7 @@ ROUGH_TERRAINS_CFG_ONLYSTAIRS = TerrainGeneratorCfg(
             },
         ),
         "perlin_rough_stand": terrain_gen.PerlinPlaneTerrainCfg(
-            proportion=0.25,
+            proportion=0.05,
             noise_scale=[0.0, 0.1],
             noise_frequency=20,
             fractal_octaves=2,
@@ -89,8 +88,27 @@ ROUGH_TERRAINS_CFG_ONLYSTAIRS = TerrainGeneratorCfg(
                 ),
             },
         ),
+        "square_gaps": terrain_gen.PerlinSquareGapTerrainCfg(
+            proportion=0.10,
+            gap_distance_range=(0.1, 0.7),
+            gap_depth=(0.4, 0.6),
+            platform_width=2.5,
+            border_width=1.0,
+            wall_prob=[0.3, 0.3, 0.3, 0.3],
+            wall_height=5.0,
+            wall_thickness=0.05,
+            flat_patch_sampling={
+                "target": FlatPatchSamplingCfg(
+                    num_patches=50,
+                    patch_radius=[0.05, 0.10, 0.15, 0.20],
+                    max_height_diff=0.05,
+                    x_range=(3.7, 3.7),
+                    y_range=(-0.0, 0.0),
+                ),
+            },
+        ),
         "pyramid_stairs": terrain_gen.PerlinPyramidStairsTerrainCfg(
-            proportion=0.25,
+            proportion=0.15,
             step_height_range=(0.05, 0.23),
             step_width=0.3,
             platform_width=2.5,
@@ -117,7 +135,7 @@ ROUGH_TERRAINS_CFG_ONLYSTAIRS = TerrainGeneratorCfg(
             },
         ),
         "pyramid_stairs_high": terrain_gen.PerlinPyramidStairsTerrainCfg(
-            proportion=0.0,
+            proportion=0.10,
             step_height_range=(0.05, 0.45),
             step_width=1.5,
             platform_width=4.0,
@@ -144,7 +162,7 @@ ROUGH_TERRAINS_CFG_ONLYSTAIRS = TerrainGeneratorCfg(
             },
         ),
         "pyramid_stairs_inv": terrain_gen.PerlinInvertedPyramidStairsTerrainCfg(
-            proportion=0.25,
+            proportion=0.15,
             step_height_range=(0.05, 0.23),
             step_width=0.3,
             platform_width=2.5,
@@ -171,7 +189,7 @@ ROUGH_TERRAINS_CFG_ONLYSTAIRS = TerrainGeneratorCfg(
             },
         ),
         "pyramid_stairs_inv_high": terrain_gen.PerlinInvertedPyramidStairsTerrainCfg(
-            proportion=0.0,
+            proportion=0.10,
             step_height_range=(0.05, 0.45),
             step_width=1.5,
             platform_width=4.0,
@@ -197,66 +215,68 @@ ROUGH_TERRAINS_CFG_ONLYSTAIRS = TerrainGeneratorCfg(
                 ),
             },
         ),
-    },
-)
-
-# OnlyStairs training groups. They condition the AMP discriminator so that a
-# zero-command stand environment is compared only with stand demonstrations,
-# flat walking only with walk demonstrations, and stair terrains with parkour.
-ONLYSTAIRS_AMP_TERRAIN_NAME_GROUPS = [
-    ["perlin_rough_stand"],
-    ["perlin_rough"],
-    [
-        "pyramid_stairs",
-        "pyramid_stairs_high",
-        "pyramid_stairs_inv",
-        "pyramid_stairs_inv_high",
-        "dual_pyramid_course",
-    ],
-]
-
-# Conservative first-stage ranges chosen to overlap the retargeted data. They
-# can be widened after stable standing, flat walking, and basic stairs converge.
-ONLYSTAIRS_COMMAND_RESAMPLE_TIME_RANGE = (4.0, 7.0)
-ONLYSTAIRS_FLAT_WALK_SPEED_RANGE = (0.2, 0.65)
-ONLYSTAIRS_STAIRS_SPEED_RANGE = (0.3, 0.6)
-
-
-PLAY_DUAL_PYRAMID_SPAWN_X = -10.5
-PLAY_DUAL_PYRAMID_TARGET_X = 10.5
-PLAY_DUAL_PYRAMID_SPEED = 0.65
-
-PLAY_DUAL_PYRAMID_TERRAINS_CFG = TerrainGeneratorCfg(
-    seed=0,
-    size=(24.0, 8.0),
-    border_width=0.5,
-    num_rows=1,
-    num_cols=1,
-    horizontal_scale=0.05,
-    vertical_scale=0.005,
-    slope_threshold=1.0,
-    use_cache=False,
-    curriculum=False,
-    sub_terrains={
-        "dual_pyramid_course": terrain_gen.DualPyramidStairsTerrainCfg(
-            proportion=1.0,
-            step_height=0.10,
-            step_width=0.40,
-            platform_width=1.60,
-            feature_width=6.80,
-            inverted_center_x=-5.0,
-            pyramid_center_x=5.0,
-            border_width=0.5,
-            wall_prob=[0.0, 0.0, 1.0, 1.0],
+        "boxes": terrain_gen.PerlinDiscreteObstaclesTerrainCfg(
+            proportion=0.10,
+            num_obstacles=20,
+            obstacle_height_mode="fixed",
+            obstacle_width_range=(0.8, 1.5),
+            obstacle_height_range=(0.05, 0.45),
+            platform_width=1.5,
+            border_width=0.0,
+            wall_prob=[0.3, 0.3, 0.3, 0.3],
+            wall_height=5.0,
+            wall_thickness=0.05,
+            perlin_cfg=terrain_gen.PerlinPlaneTerrainCfg(
+                noise_scale=0.05,
+                noise_frequency=20,
+                fractal_octaves=2,
+                fractal_lacunarity=2.0,
+                fractal_gain=0.25,
+                centering=True,
+            ),
+            flat_patch_sampling={
+                "target": FlatPatchSamplingCfg(
+                    num_patches=50, patch_radius=[0.05, 0.10, 0.15, 0.20], max_height_diff=0.05
+                ),
+            },
+        ),
+        "mesh_boxes": terrain_gen.PerlinMeshRandomMultiBoxTerrainCfg(
+            proportion=0.10,
+            box_height_mean=[0.1, 0.4],
+            box_height_range=0.05,
+            box_length_mean=0.4,
+            box_length_range=0.1,
+            box_width_mean=0.4,
+            box_width_range=0.1,
+            platform_width=1.5,
+            generation_ratio=0.3,
+            no_perlin_at_obstacle=True,
+            wall_prob=[0.3, 0.3, 0.3, 0.3],
             wall_height=5.0,
             wall_thickness=0.05,
             flat_patch_sampling={
+                "target": FlatPatchSamplingCfg(num_patches=50, patch_radius=[0.05, 0.10, 0.15], max_height_diff=0.05),
+            },
+        ),
+        "hf_pyramid_slope_inv": terrain_gen.PerlinInvertedPyramidSlopedTerrainCfg(
+            proportion=0.10,
+            slope_range=(0.0, 0.7),
+            platform_width=1.5,
+            border_width=1.0,
+            wall_prob=[0.3, 0.3, 0.3, 0.3],
+            wall_height=5.0,
+            wall_thickness=0.05,
+            perlin_cfg=terrain_gen.PerlinPlaneTerrainCfg(
+                noise_scale=0.00,
+                noise_frequency=20,
+                fractal_octaves=2,
+                fractal_lacunarity=2.0,
+                fractal_gain=0.25,
+                centering=True,
+            ),
+            flat_patch_sampling={
                 "target": FlatPatchSamplingCfg(
-                    num_patches=50,
-                    patch_radius=[0.05, 0.10, 0.15, 0.20],
-                    max_height_diff=0.05,
-                    x_range=(PLAY_DUAL_PYRAMID_TARGET_X, PLAY_DUAL_PYRAMID_TARGET_X),
-                    y_range=(0.0, 0.0),
+                    num_patches=50, patch_radius=[0.05, 0.10, 0.15, 0.20], max_height_diff=0.05
                 ),
             },
         ),
@@ -270,7 +290,7 @@ class SceneCfg(InteractiveSceneCfg):
     terrain = TerrainImporterCfg(
         prim_path="/World/ground",
         terrain_type="generator",
-        terrain_generator=ROUGH_TERRAINS_CFG_ONLYSTAIRS,
+        terrain_generator=ROUGH_TERRAINS_CFG,
         max_init_terrain_level=5,
         collision_group=-1,
         physics_material=sim_utils.RigidBodyMaterialCfg(
@@ -287,7 +307,7 @@ class SceneCfg(InteractiveSceneCfg):
         debug_vis=False,
         virtual_obstacles={
             "edges": GreedyconcatEdgeCylinderCfg(
-                cylinder_radius=STAIR_EDGE_REGION_RADIUS,
+                cylinder_radius=0.05,
                 min_points=2,
             ),
         },
@@ -309,24 +329,6 @@ class SceneCfg(InteractiveSceneCfg):
         offset=RayCasterCfg.OffsetCfg(pos=(0.04, 0.0, 20.0)),
         ray_alignment="yaw",
         pattern_cfg=patterns.GridPatternCfg(resolution=0.12, size=[0.12, 0.0]),
-        debug_vis=False,
-        mesh_prim_paths=["/World/ground"],
-        update_period=0.02,
-    )
-    left_support_scanner = RayCasterCfg(
-        prim_path="{ENV_REGEX_NS}/Robot/left_ankle_roll_link",
-        offset=RayCasterCfg.OffsetCfg(pos=(0.0475, 0.0, 20.0)),
-        ray_alignment="yaw",
-        pattern_cfg=patterns.GridPatternCfg(resolution=0.02, size=[0.145, 0.06]),
-        debug_vis=False,
-        mesh_prim_paths=["/World/ground"],
-        update_period=0.02,
-    )
-    right_support_scanner = RayCasterCfg(
-        prim_path="{ENV_REGEX_NS}/Robot/right_ankle_roll_link",
-        offset=RayCasterCfg.OffsetCfg(pos=(0.0475, 0.0, 20.0)),
-        ray_alignment="yaw",
-        pattern_cfg=patterns.GridPatternCfg(resolution=0.02, size=[0.145, 0.06]),
         debug_vis=False,
         mesh_prim_paths=["/World/ground"],
         update_period=0.02,
@@ -503,11 +505,6 @@ class ObservationsCfg:
     @configclass
     class AmpPolicyStateObsCfg(ObsGroup):
         concatenate_terms = False
-        terrain_context = ObsTerm(
-            func=mdp.terrain_type_one_hot,
-            params={"terrain_name_groups": ONLYSTAIRS_AMP_TERRAIN_NAME_GROUPS},
-            noise=None,
-        )
         projected_gravity = ObsTerm(
             func=mdp.projected_gravity,
             params={
@@ -558,11 +555,6 @@ class ObservationsCfg:
     @configclass
     class AmpReferenceStateObsCfg(ObsGroup):
         concatenate_terms = False
-        terrain_context = ObsTerm(
-            func=mdp.terrain_type_one_hot,
-            params={"terrain_name_groups": ONLYSTAIRS_AMP_TERRAIN_NAME_GROUPS},
-            noise=None,
-        )
         projected_gravity = ObsTerm(
             func=mdp.projected_gravity_reference_as_state,
             params={
@@ -628,48 +620,29 @@ class CommandsCfg:
 
     base_velocity = mdp.PoseVelocityCommandCfg(
         asset_name="robot",
-        resampling_time_range=ONLYSTAIRS_COMMAND_RESAMPLE_TIME_RANGE,
+        resampling_time_range=(8.0, 12.0),
         debug_vis=False,
         velocity_control_stiffness=2.0,
         heading_control_stiffness=2.0,
-        rel_standing_envs=0.0,
-        # Flat walking uses direct velocity sampling and therefore never gets
-        # an accidental zero command from a nearby/behind position target.
-        ranges=mdp.PoseVelocityCommandCfg.Ranges(
-            lin_vel_x=ONLYSTAIRS_FLAT_WALK_SPEED_RANGE,
-            lin_vel_y=(0.0, 0.0),
-            ang_vel_z=(0.0, 0.0),
-        ),
-        random_velocity_terrain=["perlin_rough"],
+        rel_standing_envs=0.05,
+        ranges=mdp.PoseVelocityCommandCfg.Ranges(lin_vel_x=(0.0, 0.0), lin_vel_y=(0.0, 0.0), ang_vel_z=(-1.0, 1.0)),
+        random_velocity_terrain=["perlin_rough_stand"],
         velocity_ranges={
-            "perlin_rough": {
-                "lin_vel_x": ONLYSTAIRS_FLAT_WALK_SPEED_RANGE,
-                "lin_vel_y": (0.0, 0.0),
-                "ang_vel_z": (0.0, 0.0),
-            },
+            "perlin_rough": {"lin_vel_x": (0.45, 1.0), "lin_vel_y": (0.0, 0.0), "ang_vel_z": (-1.0, 1.0)},
             "perlin_rough_stand": {"lin_vel_x": (0.0, 0.0), "lin_vel_y": (0.0, 0.0), "ang_vel_z": (0.0, 0.0)},
-            "pyramid_stairs": {
-                "lin_vel_x": ONLYSTAIRS_STAIRS_SPEED_RANGE,
-                "lin_vel_y": (0.0, 0.0),
-                "ang_vel_z": (-0.5, 0.5),
-            },
-            "pyramid_stairs_high": {
-                "lin_vel_x": ONLYSTAIRS_STAIRS_SPEED_RANGE,
-                "lin_vel_y": (0.0, 0.0),
-                "ang_vel_z": (-0.5, 0.5),
-            },
-            "pyramid_stairs_inv": {
-                "lin_vel_x": ONLYSTAIRS_STAIRS_SPEED_RANGE,
-                "lin_vel_y": (0.0, 0.0),
-                "ang_vel_z": (-0.5, 0.5),
-            },
+            "square_gaps": {"lin_vel_x": (0.45, 0.8), "lin_vel_y": (0.0, 0.0), "ang_vel_z": (-1.0, 1.0)},
+            "pyramid_stairs": {"lin_vel_x": (0.45, 0.8), "lin_vel_y": (0.0, 0.0), "ang_vel_z": (-1.0, 1.0)},
+            "pyramid_stairs_high": {"lin_vel_x": (0.45, 0.8), "lin_vel_y": (0.0, 0.0), "ang_vel_z": (-1.0, 1.0)},
+            "pyramid_stairs_inv": {"lin_vel_x": (0.45, 0.8), "lin_vel_y": (0.0, 0.0), "ang_vel_z": (-1.0, 1.0)},
             "pyramid_stairs_inv_high": {
-                "lin_vel_x": ONLYSTAIRS_STAIRS_SPEED_RANGE,
+                "lin_vel_x": (0.45, 0.8),
                 "lin_vel_y": (0.0, 0.0),
-                "ang_vel_z": (-0.5, 0.5),
+                "ang_vel_z": (-1.0, 1.0),
             },
+            "boxes": {"lin_vel_x": (0.45, 0.8), "lin_vel_y": (0.0, 0.0), "ang_vel_z": (-1.0, 1.0)},
+            "mesh_boxes": {"lin_vel_x": (0.45, 0.8), "lin_vel_y": (0.0, 0.0), "ang_vel_z": (-1.0, 1.0)},
+            "hf_pyramid_slope_inv": {"lin_vel_x": (0.45, 0.8), "lin_vel_y": (0.0, 0.0), "ang_vel_z": (-1.0, 1.0)},
         },
-        use_terrain_ang_vel_range=True,
         only_positive_lin_vel_x=True,
         lin_vel_threshold=0.0,
         ang_vel_threshold=0.0,
@@ -766,24 +739,6 @@ class G1Rewards:
             "height_offset": 0.035,
         },
     )
-    feet_support_deficit = RewTerm(
-        func=mdp.feet_support_deficit,
-        weight=-1.0,
-        params={
-            "contact_sensor_cfg": SceneEntityCfg(
-                "contact_forces", body_names=["left_ankle_roll_link", "right_ankle_roll_link"], preserve_order=True
-            ),
-            "left_support_scanner_cfg": SceneEntityCfg("left_support_scanner"),
-            "right_support_scanner_cfg": SceneEntityCfg("right_support_scanner"),
-            "asset_cfg": SceneEntityCfg(
-                "robot", body_names=["left_ankle_roll_link", "right_ankle_roll_link"], preserve_order=True
-            ),
-            "height_offset": 0.035,
-            "support_tolerance": 0.02,
-            "min_support_ratio": 0.7,
-            "contact_force_threshold": 1.0,
-        },
-    )
     feet_close_xy = RewTerm(
         func=mdp.feet_close_xy_gauss,
         weight=0.4,
@@ -874,12 +829,6 @@ class TerminationsCfg:
 @configclass
 class EventCfg:
     """Configuration for events."""
-
-    match_motion_ref_with_scene = EventTerm(
-        func=instinct_mdp.match_motion_ref_with_scene,
-        mode="startup",
-        params={"motion_ref_cfg": SceneEntityCfg("motion_reference")},
-    )
 
     physics_material = EventTerm(
         func=mdp.randomize_rigid_body_material,

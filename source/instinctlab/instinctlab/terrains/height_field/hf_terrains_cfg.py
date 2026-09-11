@@ -61,6 +61,35 @@ class PerlinInvertedPyramidStairsTerrainCfg(HfInvertedPyramidStairsTerrainCfg, W
 
 
 @configclass
+class IncompletePerlinPyramidStairsTerrainCfg(PerlinPyramidStairsTerrainCfg):
+    """Pyramid stairs with one optional local missing-step or ramp defect."""
+
+    function = hf_terrains.incomplete_perlin_pyramid_stairs_terrain
+
+    defect_probability: float = 0.5
+    """Probability of applying a defect to this terrain tile."""
+
+    defect_type: str = "random"
+    """Defect kind: ``"random"``, ``"missing"``, or ``"ramp"``."""
+
+    defect_step_range: tuple[int, int] = (2, 6)
+    """Inclusive eligible stair indices, counted from the outer ground toward the center."""
+
+    defect_corridor_width: float = 1.2
+    """Width in meters of the centered local defect corridor."""
+
+    defect_direction: str = "x_pos"
+    """Approach direction: ``x_pos``, ``x_neg``, ``y_pos``, or ``y_neg``."""
+
+
+@configclass
+class IncompletePerlinInvertedPyramidStairsTerrainCfg(IncompletePerlinPyramidStairsTerrainCfg):
+    """Inverted pyramid stairs with one optional local defect."""
+
+    inverted: bool = True
+
+
+@configclass
 class DualPyramidStairsTerrainCfg(HfTerrainBaseCfg, WallTerrainCfgMixin):
     """A straight course containing an inverted pyramid followed by a positive pyramid."""
 

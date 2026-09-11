@@ -75,7 +75,7 @@ class AmpAlgoCfg(InstinctRlPpoAlgorithmCfg):
 @configclass
 class G1ParkourPPORunnerCfg(InstinctRlOnPolicyRunnerCfg):
     num_steps_per_env = 24
-    max_iterations = 15000
+    max_iterations = 50000
     save_interval = 5000
     experiment_name = "g1_parkour"
     resume = False
@@ -90,3 +90,10 @@ class G1OnlyStairsPPORunnerCfg(G1ParkourPPORunnerCfg):
     """Runner configuration with an isolated log directory for the OnlyStairs task."""
 
     experiment_name = "g1_parkour_onlystairs"
+
+
+@configclass
+class G1IncompleteStairsPPORunnerCfg(G1ParkourPPORunnerCfg):
+    """Runner configuration with an isolated log directory for incomplete stairs."""
+
+    experiment_name = "g1_parkour_incomplete_stairs"

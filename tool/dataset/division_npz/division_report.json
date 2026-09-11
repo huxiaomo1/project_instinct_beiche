@@ -1,0 +1,43 @@
+{
+  "source_file": "/home/dhy/Datasets/parkour_motion_without_run_retargetted.npz",
+  "output_directory": "/data4/dhy/InstinctLab/tool/dataset/division_npz",
+  "num_frames": 18982,
+  "framerate": 50.0,
+  "detector_config": {
+    "jump_xy_m": 0.25,
+    "jump_z_m": 0.15,
+    "joint_jump_rad": 0.75,
+    "smooth_window_s": 0.2,
+    "height_trend_window_s": 1.0,
+    "label_filter_s": 0.3,
+    "min_state_s": 0.4,
+    "min_output_s": 0.3,
+    "min_stairs_output_s": 1.0,
+    "max_output_s": 10.0,
+    "stand_speed_mps": 0.08,
+    "locomotion_speed_mps": 0.12,
+    "stand_joint_speed_radps": 0.35,
+    "stairs_height_rate_mps": 0.06,
+    "stairs_min_net_height_m": 0.12
+  },
+  "hip_knee_joints": [
+    "left_hip_pitch_joint",
+    "left_hip_roll_joint",
+    "left_hip_yaw_joint",
+    "left_knee_joint",
+    "right_hip_pitch_joint",
+    "right_hip_roll_joint",
+    "right_hip_yaw_joint",
+    "right_knee_joint"
+  ],
+  "class_weights": {
+    "stand": 0.25,
+    "walk": 0.25,
+    "stairs_up": 0.2,
+    "stairs_down": 0.3,
+    "unknown": 0.0
+  },
+  "hard_boundary_count": 49,
+  "segment_count": 83,
+  "exported_segment_count": 52
+}

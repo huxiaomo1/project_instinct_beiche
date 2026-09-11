@@ -4,6 +4,7 @@
 
 import argparse
 import os
+import pickle
 import subprocess
 import sys
 
@@ -55,20 +56,28 @@ simulation_app = app_launcher.app
 import gymnasium as gym
 import torch
 
-import carb.input
-import omni.appwindow
-from carb.input import KeyboardEventType
+if args_cli.keyboard_control:
+    import carb.input
+    import omni.appwindow
+    from carb.input import KeyboardEventType
+
 from instinct_rl.runners import OnPolicyRunner
 from instinct_rl.utils.utils import get_obs_slice, get_subobs_by_components, get_subobs_size
 
 from isaaclab.envs import DirectMARLEnv, multi_agent_to_single_agent
 from isaaclab.utils.dict import print_dict
-from isaaclab.utils.io import load_pickle, load_yaml
+from isaaclab.utils.io import load_yaml
 from isaaclab_tasks.utils import get_checkpoint_path, parse_env_cfg
 
 # Import extensions to set up environment tasks
 from instinctlab.utils.wrappers import InstinctRlVecEnvWrapper
 from instinctlab.utils.wrappers.instinct_rl import InstinctRlOnPolicyRunnerCfg
+
+
+def load_pickle(filename):
+    with open(filename, "rb") as f:
+        return pickle.load(f)
+
 
 # wait for attach if in debug mode
 if args_cli.debug:
@@ -200,30 +209,31 @@ def main():
             ),
         )
 
-    override_command = torch.zeros(env.num_envs, 3, device=env.device)
-    command_obs_slice = get_obs_slice(env.get_obs_segments(), "velocity_commands")
+    if args_cli.keyboard_control:
+        override_command = torch.zeros(env.num_envs, 3, device=env.device)
+        command_obs_slice = get_obs_slice(env.get_obs_segments(), "velocity_commands")
 
-    def on_keyboard_input(e):
-        if e.input == carb.input.KeyboardInput.W:
-            if e.type == KeyboardEventType.KEY_PRESS or e.type == KeyboardEventType.KEY_REPEAT:
-                override_command[:, 0] += args_cli.keyboard_linvel_step
-        if e.input == carb.input.KeyboardInput.S:
-            if e.type == KeyboardEventType.KEY_PRESS or e.type == KeyboardEventType.KEY_REPEAT:
-                override_command[:, 2] = 0.0
-        if e.input == carb.input.KeyboardInput.F:
-            if e.type == KeyboardEventType.KEY_PRESS or e.type == KeyboardEventType.KEY_REPEAT:
-                override_command[:, 2] = args_cli.keyboard_angvel
-        if e.input == carb.input.KeyboardInput.G:
-            if e.type == KeyboardEventType.KEY_PRESS or e.type == KeyboardEventType.KEY_REPEAT:
-                override_command[:, 2] = -args_cli.keyboard_angvel
-        if e.input == carb.input.KeyboardInput.X:
-            if e.type == KeyboardEventType.KEY_PRESS or e.type == KeyboardEventType.KEY_REPEAT:
-                override_command[:] = 0.0
+        def on_keyboard_input(e):
+            if e.input == carb.input.KeyboardInput.W:
+                if e.type == KeyboardEventType.KEY_PRESS or e.type == KeyboardEventType.KEY_REPEAT:
+                    override_command[:, 0] += args_cli.keyboard_linvel_step
+            if e.input == carb.input.KeyboardInput.S:
+                if e.type == KeyboardEventType.KEY_PRESS or e.type == KeyboardEventType.KEY_REPEAT:
+                    override_command[:, 2] = 0.0
+            if e.input == carb.input.KeyboardInput.F:
+                if e.type == KeyboardEventType.KEY_PRESS or e.type == KeyboardEventType.KEY_REPEAT:
+                    override_command[:, 2] = args_cli.keyboard_angvel
+            if e.input == carb.input.KeyboardInput.G:
+                if e.type == KeyboardEventType.KEY_PRESS or e.type == KeyboardEventType.KEY_REPEAT:
+                    override_command[:, 2] = -args_cli.keyboard_angvel
+            if e.input == carb.input.KeyboardInput.X:
+                if e.type == KeyboardEventType.KEY_PRESS or e.type == KeyboardEventType.KEY_REPEAT:
+                    override_command[:] = 0.0
 
-    app_window = omni.appwindow.get_default_app_window()
-    keyboard = app_window.get_keyboard()
-    input = carb.input.acquire_input_interface()
-    input.subscribe_to_keyboard_events(keyboard, on_keyboard_input)
+        app_window = omni.appwindow.get_default_app_window()
+        keyboard = app_window.get_keyboard()
+        input = carb.input.acquire_input_interface()
+        input.subscribe_to_keyboard_events(keyboard, on_keyboard_input)
 
     # reset environment
     obs, _ = env.get_observations()

@@ -1,5 +1,7 @@
 from .hf_terrains_cfg import (
     DualPyramidStairsTerrainCfg,
+    IncompletePerlinInvertedPyramidStairsTerrainCfg,
+    IncompletePerlinPyramidStairsTerrainCfg,
     PerlinCrossStoneTerrainCfg,
     PerlinDiscreteObstaclesTerrainCfg,
     PerlinGutterTerrainCfg,

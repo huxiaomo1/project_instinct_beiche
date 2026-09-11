@@ -30,6 +30,16 @@ gym.register(
 )
 
 gym.register(
+    id="Instinct-Parkour-Incomplete-Stairs-G1-v0",
+    entry_point="instinctlab.envs:InstinctRlEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": f"{task_entry}.g1_parkour_target_amp_cfg_incomplete_stairs:G1ParkourEnvCfg",
+        "instinct_rl_cfg_entry_point": (f"{agents.__name__}.instinct_rl_amp_cfg:G1IncompleteStairsPPORunnerCfg"),
+    },
+)
+
+gym.register(
     id="Instinct-Parkour-Target-Amp-G1-Play-v0",
     entry_point="instinctlab.envs:InstinctRlEnv",
     disable_env_checker=True,
