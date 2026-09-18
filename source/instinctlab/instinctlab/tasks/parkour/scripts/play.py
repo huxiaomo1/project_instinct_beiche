@@ -130,9 +130,31 @@ def main():
     else:
         agent_cfg_dict = agent_cfg.to_dict()
 
+    if args_cli.video and args_cli.task == "Instinct-Parkour-Only-Stairs-G1-v0" and not args_cli.env_cfg:
+        from instinctlab.tasks.parkour.config.g1.g1_parkour_target_amp_cfg_only_stairs import G1ParkourEnvCfg_PLAY
+
+        demo_cfg = G1ParkourEnvCfg_PLAY()
+        demo_cfg.sim.device = env_cfg.sim.device
+        demo_cfg.sim.use_fabric = env_cfg.sim.use_fabric
+        env_cfg = demo_cfg
+        for terrain_cfg in env_cfg.scene.terrain.terrain_generator.sub_terrains.values():
+            terrain_cfg.wall_prob = [0.0, 0.0, 0.0, 0.0]
+        env_cfg.scene.leg_volume_points.debug_vis = False
+        env_cfg.commands.base_velocity.debug_vis = False
+        print("[INFO] Recording wall-free OnlyStairs course: downhill/uphill, then uphill/downhill.")
+
     if args_cli.keyboard_control:
         env_cfg.scene.num_envs = 1
         env_cfg.episode_length_s = 1e10
+
+    if args_cli.video:
+        # Follow robot 0 with the recording camera; keep the policy camera unchanged.
+        env_cfg.viewer.origin_type = "asset_root"
+        env_cfg.viewer.asset_name = "robot"
+        env_cfg.viewer.env_index = 0
+        env_cfg.viewer.eye = (0.0, 3.0, 0.5)
+        env_cfg.viewer.lookat = (0.0, 0.0, -0.3)
+        env_cfg.viewer.resolution = (1280, 720)
 
     # create isaac environment
     env = gym.make(args_cli.task, cfg=env_cfg, render_mode="rgb_array" if args_cli.video else None)

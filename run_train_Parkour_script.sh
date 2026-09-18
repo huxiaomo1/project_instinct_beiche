@@ -10,7 +10,7 @@ fi
 log_filename=$1
 
 # 使用 nohup 运行 Python 脚本，并将输出重定向到日志文件
-CUDA_VISIBLE_DEVICES=2 nohup bash -c '
+CUDA_VISIBLE_DEVICES=4 nohup bash -c '
     echo "Process ID: $$"
     echo "CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES}"
     echo "Start time: $(date)" 

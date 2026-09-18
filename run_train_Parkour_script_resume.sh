@@ -10,7 +10,7 @@ fi
 log_filename=$1
 
 # 使用 nohup 运行 Python 脚本，并将输出重定向到日志文件
-CUDA_VISIBLE_DEVICES=2 nohup bash -c '
+CUDA_VISIBLE_DEVICES=1 nohup bash -c '
     echo "Process ID: $$"
     echo "CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES}"
     echo "Start time: $(date)" 
@@ -19,8 +19,8 @@ CUDA_VISIBLE_DEVICES=2 nohup bash -c '
         --headless \
         --logroot=/data3/dhy/Train_and_Play/InstinctLab/logs/instinct_rl/g1_parkour \
         --resume \
-        --load_run=/data3/dhy/Train_and_Play/InstinctLab/logs/instinct_rl/g1_parkour/20260831_225625 \
-        --checkpoint=model_30000.pt 
+        --load_run=/data3/dhy/Train_and_Play/InstinctLab/logs/instinct_rl/g1_parkour/20260907_210520 \
+        --checkpoint=model_25000.pt 
     '> "./output_${log_filename}.log" 2>&1 &
 
 # 获取后台运行的进程号

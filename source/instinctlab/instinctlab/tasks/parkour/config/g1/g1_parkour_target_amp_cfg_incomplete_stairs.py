@@ -35,7 +35,7 @@ G1_CFG.spawn.merge_fixed_joints = True
 G1_CFG.init_state.pos = (0.0, 0.0, 0.9)
 G1_with_shoe_CFG = copy.deepcopy(G1_CFG)
 G1_with_shoe_CFG.spawn.asset_path = os.path.abspath(
-    f"{__file_dir__}/../../urdf/g1_29dof_torsoBase_popsicle_with_shoe.urdf"
+    f"{__file_dir__}/../../urdf/g1_29dof_torsoBase_popsicle_without_shoe.urdf"
 )
 
 
@@ -119,7 +119,7 @@ class G1ParkourRoughEnvCfg(ParkourEnvCfg):
         # Scene
         self.scene.terrain.terrain_generator = ROUGH_TERRAINS_CFG_INCOMPLETE_STAIRS
         self.scene.robot = G1_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")
-        self.scene.robot.actuators = beyondmimic_g1_29dof_delayed_actuators
+        self.scene.robot.actuators = beyondmimic_g1_29dof_actuators
         self.scene.camera.mesh_prim_paths.extend(get_link_prim_targets(G1_29DOF_LINKS))
         self.scene.motion_reference = motion_reference_cfg
 
@@ -190,14 +190,12 @@ class G1ParkourRoughEnvCfg_PLAY(G1ParkourRoughEnvCfg):
 
 
 @configclass
-class G1ParkourEnvCfg(G1ParkourRoughEnvCfg, ShoeConfigMixin):
+class G1ParkourEnvCfg(G1ParkourRoughEnvCfg):
     def __post_init__(self):
         super().__post_init__()
-        self.apply_shoe_config()
 
 
 @configclass
-class G1ParkourEnvCfg_PLAY(G1ParkourRoughEnvCfg_PLAY, ShoeConfigMixin):
+class G1ParkourEnvCfg_PLAY(G1ParkourRoughEnvCfg_PLAY):
     def __post_init__(self):
         super().__post_init__()
-        self.apply_shoe_config()
