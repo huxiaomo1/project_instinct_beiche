@@ -10,6 +10,13 @@ from instinctlab.utils.wrappers.instinct_rl import (
 
 @configclass
 class DepthEncoderConv2dCfg(InstinctRlConv2dHeadCfg):
+    """Encode 8 cropped depth frames (8, 18, 32) into a 128-dimensional latent.
+
+    Instinct-RL infers the input shape from the observation segments for both
+    actor and critic: Conv2d(8, 4, 3, padding=1) -> Flatten(2304) ->
+    MLP(2304, 256, 256, 128). With stride 1, no max-pooling layer is added.
+    """
+
     output_size = 128
     channels = [4]
     kernel_sizes = [3]
@@ -97,3 +104,23 @@ class G1IncompleteStairsPPORunnerCfg(G1ParkourPPORunnerCfg):
     """Runner configuration with an isolated log directory for incomplete stairs."""
 
     experiment_name = "g1_parkour_incomplete_stairs"
+
+
+@configclass
+class StandFineTuneAlgoCfg(AmpAlgoCfg):
+    class_name = "instinctlab.tasks.parkour.stand_algorithm:ParkourStandPPO"
+    learning_rate = 5.0e-5
+    schedule = "fixed"
+    clip_param = 0.1
+    entropy_coef = 0.001
+    stand_warmup_updates = 100
+    stand_blend_updates = 2000
+    reset_optimizer_on_warm_start = True
+
+
+@configclass
+class G1ParkourStandFineTuneRunnerCfg(G1ParkourPPORunnerCfg):
+    experiment_name = "g1_parkour_stand_finetune"
+    max_iterations = 5000
+    save_interval = 100
+    algorithm = StandFineTuneAlgoCfg()

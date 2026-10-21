@@ -384,7 +384,8 @@ class SceneCfg(InteractiveSceneCfg):
         min_distance=0.1,
         # noise
         noise_pipeline={
-            "crop_and_resize": CropAndResizeCfg(crop_region=(0, 0, 0, 0), resize_shape=None),
+            # Crop (top, bottom, left, right): 64x36 raw depth -> 32x18 policy input.
+            "crop_and_resize": CropAndResizeCfg(crop_region=(18, 0, 16, 16), resize_shape=None),
             "gaussian_blur": GaussianBlurNoiseCfg(kernel_size=3, sigma=1),
             "depth_normalization": DepthNormalizationCfg(
                 depth_range=(0.0, 2.5),
