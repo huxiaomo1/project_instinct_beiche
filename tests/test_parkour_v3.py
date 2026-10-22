@@ -7,6 +7,7 @@ These checks do not replace a simulator rollout or a trained-policy evaluation.
 from __future__ import annotations
 
 import ast
+import copy
 import math
 import numpy as np
 import torch
@@ -50,6 +51,8 @@ class ConfigFactory:
         return SimpleNamespace(**kwargs)
 
     def __getattr__(self, name):
+        if name.startswith("__"):
+            raise AttributeError(name)
         return self
 
 
@@ -64,7 +67,7 @@ CONFIG = execute(
             isinstance(node, ast.Assign)
             and any(isinstance(t, ast.Name) and t.id == "ROUGH_TERRAINS_CFG" for t in node.targets)
         )
-        or (isinstance(node, ast.ClassDef) and node.name in {"CommandsCfg", "EventCfg"})
+        or (isinstance(node, ast.ClassDef) and node.name in {"CommandsCfg", "EventCfg", "G1Rewards"})
     ],
     {
         "math": math,
@@ -74,10 +77,70 @@ CONFIG = execute(
         "mdp": FACTORY,
         "instinct_mdp": FACTORY,
         "EventTerm": FACTORY,
+        "RewTerm": FACTORY,
         "SceneEntityCfg": entity,
         "configclass": lambda cls: cls,
     },
     CONFIG_PATH,
+)
+
+
+def config_attributes(cls):
+    return {name: value for name, value in vars(cls).items() if not name.startswith("_")}
+
+
+PLAY_TERRAIN = copy.deepcopy(CONFIG["ROUGH_TERRAINS_CFG"])
+PLAY_TERRAIN.num_rows = 4
+PLAY_TERRAIN.num_cols = 10
+for subterrain in PLAY_TERRAIN.sub_terrains.values():
+    subterrain.wall_prob = [0.0, 0.0, 0.0, 0.0]
+BASE_REWARDS = SimpleNamespace(**config_attributes(CONFIG["G1Rewards"]))
+BASE_REWARDS.feet_at_plane.params["height_offset"] = 0.058
+BASE_CAMERA = SimpleNamespace(
+    noise_pipeline={"crop_and_resize": SimpleNamespace(crop_region=(18, 0, 16, 16), resize_shape=None)}
+)
+
+
+class OrdinaryEnvFixture:
+    """Shared templates deliberately expose mutations that could leak into ordinary tasks."""
+
+    def __init__(self):
+        self.scene = SimpleNamespace(
+            terrain=SimpleNamespace(terrain_generator=CONFIG["ROUGH_TERRAINS_CFG"]), camera=BASE_CAMERA
+        )
+        self.commands = SimpleNamespace(base_velocity=CONFIG["CommandsCfg"].base_velocity)
+        self.rewards = SimpleNamespace(rewards=BASE_REWARDS)
+        self.events = SimpleNamespace(**config_attributes(CONFIG["EventCfg"]))
+        self.__post_init__()
+
+    def __post_init__(self):
+        pass
+
+
+class OrdinaryPlayFixture(OrdinaryEnvFixture):
+    def __post_init__(self):
+        self.scene.terrain.terrain_generator = PLAY_TERRAIN
+
+
+V3_PATH = PARKOUR / "config/g1/g1_parkour_stand_stairs_v3_cfg.py"
+V3_CONFIG = execute(
+    [
+        node
+        for node in ast.parse(V3_PATH.read_text()).body
+        if isinstance(node, (ast.Assign, ast.FunctionDef, ast.ClassDef))
+    ],
+    {
+        "copy": copy,
+        "math": math,
+        "mdp": FACTORY,
+        "SceneEntityCfg": entity,
+        "RewTerm": FACTORY,
+        "EventTerm": FACTORY,
+        "configclass": lambda cls: cls,
+        "G1ParkourEnvCfg": OrdinaryEnvFixture,
+        "G1ParkourEnvCfg_PLAY": OrdinaryPlayFixture,
+    },
+    V3_PATH,
 )
 
 
@@ -119,20 +182,23 @@ class StandingRewardTests(unittest.TestCase):
 
 
 class ConfigurationTests(unittest.TestCase):
+    def setUp(self):
+        self.env = V3_CONFIG["G1ParkourStandStairsV3EnvCfg"]()
+
     def test_real_column_resolver_assigns_six_six_six_two(self):
         path = ROOT / "source/instinctlab/instinctlab/terrains/utils.py"
         namespace = {"np": np}
         exec(compile(path.read_text(), str(path), "exec"), namespace)
-        terrain = CONFIG["ROUGH_TERRAINS_CFG"]
+        terrain = self.env.scene.terrain.terrain_generator
         counts = Counter(namespace["resolve_subterrain_names_by_column"](terrain))
         self.assertEqual(
             counts, {"perlin_rough_stand": 6, "pyramid_stairs": 6, "pyramid_stairs_inv": 6, "perlin_rough": 2}
         )
         self.assertEqual(terrain.sub_terrains["perlin_rough_stand"].noise_scale, 0.0)
-        self.assertEqual(set(terrain.sub_terrains), set(CONFIG["CommandsCfg"].base_velocity.velocity_ranges))
+        self.assertEqual(set(terrain.sub_terrains), set(self.env.commands.base_velocity.velocity_ranges))
 
     def test_camera_ranges_are_radians_and_startup(self):
-        event = CONFIG["EventCfg"].randomize_camera_offset
+        event = self.env.events.randomize_camera_offset
         self.assertEqual(event.mode, "startup")
         self.assertEqual(event.params["asset_cfg"].name, "camera")
         for axis, degrees in (("roll", 2.0), ("pitch", 5.0), ("yaw", 2.0)):
@@ -153,7 +219,7 @@ class ConfigurationTests(unittest.TestCase):
             },
             path,
         )
-        cfg = CONFIG["CommandsCfg"].base_velocity
+        cfg = self.env.commands.base_velocity
         names = list(cfg.velocity_ranges)
         n = len(names)
         command = SimpleNamespace(
@@ -191,6 +257,117 @@ class ConfigurationTests(unittest.TestCase):
         command.is_standing_env[:] = True
         namespace["_update_command"](command)
         self.assertTrue(torch.equal(command.vel_command_b, torch.zeros(n, 3)))
+
+
+class IsolationTests(unittest.TestCase):
+    def test_constructing_v3_train_and_play_preserves_original_task(self):
+        before = OrdinaryEnvFixture()
+        V3_CONFIG["G1ParkourStandStairsV3EnvCfg"]()
+        V3_CONFIG["G1ParkourStandStairsV3EnvCfg_PLAY"]()
+        after = OrdinaryEnvFixture()
+        for env in (before, after):
+            terrain = env.scene.terrain.terrain_generator
+            self.assertEqual(len(terrain.sub_terrains), 10)
+            self.assertIn("square_gaps", terrain.sub_terrains)
+            self.assertEqual(terrain.sub_terrains["perlin_rough_stand"].proportion, 0.05)
+            self.assertEqual(terrain.sub_terrains["perlin_rough_stand"].noise_scale, [0.0, 0.1])
+            self.assertEqual(env.commands.base_velocity.random_velocity_terrain, ["perlin_rough_stand"])
+            self.assertFalse(hasattr(env.events, "randomize_camera_offset"))
+            self.assertFalse(hasattr(env.rewards.rewards, "stand_joint_vel_l2"))
+
+    def test_v3_instances_have_independent_nested_configuration(self):
+        first = V3_CONFIG["G1ParkourStandStairsV3EnvCfg"]()
+        second = V3_CONFIG["G1ParkourStandStairsV3EnvCfg"]()
+        first.commands.base_velocity.velocity_ranges["perlin_rough_stand"]["lin_vel_x"] = (1.0, 1.0)
+        first.rewards.rewards.stand_joint_vel_l2.weight = -999.0
+        first.events.randomize_camera_offset.params["offset_pose_ranges"]["pitch"] = (-1.0, 1.0)
+        first.scene.terrain.terrain_generator.sub_terrains["perlin_rough_stand"].proportion = 1.0
+        first.scene.camera.noise_pipeline["crop_and_resize"].crop_region = (0, 0, 0, 0)
+        self.assertEqual(second.commands.base_velocity.velocity_ranges["perlin_rough_stand"]["lin_vel_x"], (0.0, 0.0))
+        self.assertEqual(second.rewards.rewards.stand_joint_vel_l2.weight, -0.5)
+        self.assertEqual(
+            second.events.randomize_camera_offset.params["offset_pose_ranges"]["pitch"][1], math.radians(5)
+        )
+        self.assertEqual(second.scene.terrain.terrain_generator.sub_terrains["perlin_rough_stand"].proportion, 0.3)
+        self.assertEqual(second.scene.camera.noise_pipeline["crop_and_resize"].crop_region, (18, 0, 16, 16))
+        self.assertEqual(BASE_CAMERA.noise_pipeline["crop_and_resize"].crop_region, (18, 0, 16, 16))
+
+    def test_v3_play_disables_camera_randomization_and_preserves_shoe_adjustments(self):
+        play = V3_CONFIG["G1ParkourStandStairsV3EnvCfg_PLAY"]()
+        self.assertIsNone(play.events.randomize_camera_offset)
+        self.assertEqual(play.scene.terrain.terrain_generator.num_cols, 10)
+        self.assertEqual(play.scene.terrain.terrain_generator.num_rows, 4)
+        self.assertTrue(
+            all(
+                terrain.wall_prob == [0.0] * 4 for terrain in play.scene.terrain.terrain_generator.sub_terrains.values()
+            )
+        )
+        self.assertEqual(play.rewards.rewards.feet_at_plane.params["height_offset"], 0.058)
+        self.assertEqual(play.rewards.rewards.stand_still.weight, -0.3)
+
+    def test_ordinary_and_v3_registry_entries_are_separate(self):
+        path = PARKOUR / "config/g1/__init__.py"
+        registry = {}
+        execute(
+            [node for node in ast.parse(path.read_text()).body if not isinstance(node, (ast.Import, ast.ImportFrom))],
+            {
+                "gym": SimpleNamespace(register=lambda id, **kwargs: registry.update({id: kwargs})),
+                "agents": SimpleNamespace(__name__="test_agents"),
+            },
+            path,
+        )
+        ordinary = registry["Instinct-Parkour-Target-Amp-G1-v0"]
+        v3 = registry["Instinct-Parkour-Stand-Stairs-Finetune-G1-v3"]
+        play = registry["Instinct-Parkour-Stand-Stairs-Finetune-G1-Play-v3"]
+        self.assertIn("g1_parkour_target_amp_cfg:G1ParkourEnvCfg", ordinary["kwargs"]["env_cfg_entry_point"])
+        self.assertIn(
+            "g1_parkour_stand_stairs_v3_cfg:G1ParkourStandStairsV3EnvCfg", v3["kwargs"]["env_cfg_entry_point"]
+        )
+        self.assertTrue(play["kwargs"]["env_cfg_entry_point"].endswith("_PLAY"))
+        self.assertEqual(ordinary["entry_point"], v3["entry_point"])
+        self.assertNotEqual(
+            ordinary["kwargs"]["instinct_rl_cfg_entry_point"], v3["kwargs"]["instinct_rl_cfg_entry_point"]
+        )
+
+    def test_v3_runner_uses_original_algorithm_with_independent_defaults(self):
+        class Defaults:
+            def __init__(self, **kwargs):
+                for base in reversed(type(self).__mro__):
+                    for name, value in vars(base).items():
+                        if not name.startswith("_") and not callable(value):
+                            setattr(self, name, copy.deepcopy(value))
+                self.__dict__.update(kwargs)
+
+        path = PARKOUR / "config/g1/agents/instinct_rl_amp_cfg.py"
+        namespace = execute(
+            [
+                node
+                for node in ast.parse(path.read_text()).body
+                if isinstance(node, ast.ClassDef)
+                and node.name in {"AmpAlgoCfg", "G1ParkourPPORunnerCfg", "G1ParkourStandStairsV3RunnerCfg"}
+            ],
+            {
+                "configclass": lambda cls: cls,
+                "InstinctRlPpoAlgorithmCfg": Defaults,
+                "InstinctRlOnPolicyRunnerCfg": Defaults,
+                "MoEPolicyCfg": FACTORY,
+            },
+            path,
+        )
+        ordinary = namespace["G1ParkourPPORunnerCfg"]()
+        v3 = namespace["G1ParkourStandStairsV3RunnerCfg"]()
+        self.assertEqual(ordinary.algorithm.schedule, "adaptive")
+        self.assertEqual(ordinary.algorithm.learning_rate, 1e-3)
+        self.assertEqual(v3.algorithm.schedule, "fixed")
+        self.assertEqual(v3.algorithm.learning_rate, 5e-5)
+        self.assertEqual(v3.experiment_name, "g1_parkour_finetune_v3")
+        self.assertEqual(v3.save_interval, 1000)
+        self.assertEqual(v3.max_iterations, 50000)
+        self.assertIsNot(ordinary.algorithm, v3.algorithm)
+        self.assertEqual(v3.algorithm.class_name, "WasabiPPO")
+        self.assertEqual(v3.algorithm.discriminator_reward_coef, 0.25)
+        self.assertEqual(v3.algorithm.clip_param, ordinary.algorithm.clip_param)
+        self.assertEqual(v3.algorithm.entropy_coef, ordinary.algorithm.entropy_coef)
 
 
 class ResumeTests(unittest.TestCase):

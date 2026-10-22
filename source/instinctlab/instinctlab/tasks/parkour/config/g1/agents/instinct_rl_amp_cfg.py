@@ -104,3 +104,13 @@ class G1IncompleteStairsPPORunnerCfg(G1ParkourPPORunnerCfg):
     """Runner configuration with an isolated log directory for incomplete stairs."""
 
     experiment_name = "g1_parkour_incomplete_stairs"
+
+
+@configclass
+class G1ParkourStandStairsV3RunnerCfg(G1ParkourPPORunnerCfg):
+    """Original WasabiPPO with isolated V3 logging and post-training defaults."""
+
+    experiment_name = "g1_parkour_finetune_v3"
+    max_iterations = 50000
+    save_interval = 1000
+    algorithm = AmpAlgoCfg(learning_rate=5.0e-5, schedule="fixed")

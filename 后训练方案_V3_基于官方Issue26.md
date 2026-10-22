@@ -1,6 +1,6 @@
 # 后训练方案 V3：回归原工程的最小改动方案
 
-- 版本：V3 设计稿，按用户四项要求修订。
+- 版本：V3 独立 task 修订版，按用户四项要求实施。
 - 日期：2026-10-22。
 - 状态：已按本方案实施代码修改；实际使用与验证范围见《零速站立与楼梯后训练修改说明_V3.md》。尚未启动仿真训练。
 - 目标：从已有普通 Parkour checkpoint 继续训练，改善零命令站立，同时保留平地行走及上、下楼梯能力。
@@ -9,6 +9,8 @@
 
 沿用普通 Parkour 的 `InstinctRlEnv + MultiRewardManager + WasabiPPO + PoseVelocityCommand`。四项变化放在原工程已有的相机事件、地形/命令配置、环境奖励及 V2 清理中完成。
 
+普通任务恢复 V3 修改前配置。V3 单独注册 `Instinct-Parkour-Stand-Stairs-Finetune-G1-v3` 和 `Instinct-Parkour-Stand-Stairs-Finetune-G1-Play-v3`，通过继承及复制配置完成覆盖，不增加算法或运行环境实现。
+
 V3 使用同一轮混合地形后训练，不再采用上一版草案中的多阶段专用算法、教师约束等扩展。网络结构、观测维度、动作定义、执行器参数、AMP 判别器、AMP 参考数据和 AMP 系数保持基础 checkpoint 的设置。
 
 官方 Issue #26 确认了从基础 checkpoint 继续 PPO、按任务调整地形分布，并指出 `randomize_camera_offsets` 对迁移的重要性。该 issue 没有公开站立奖励权重或本方案的地形比例；下文参数都是本项目的试验起点。
@@ -16,7 +18,7 @@ V3 使用同一轮混合地形后训练，不再采用上一版草案中的多�
 
 ## 二、要求一：开启相机角度随机化
 
-直接复用现有 `mdp.randomize_camera_offsets`，在实际生效的 `EventCfg` 中注册 `mode="startup"` 的事件。每个并行环境采样一组安装角度偏差，用于模拟相机标定误差，不对每一帧独立抖动角度。
+直接复用现有 `mdp.randomize_camera_offsets`，在独立 V3 配置的事件对象中注册 `mode="startup"` 的事件。每个并行环境采样一组安装角度偏差，用于模拟相机标定误差，不对每一帧独立抖动角度。
 
 第一轮建议范围：
 
@@ -33,7 +35,7 @@ V3 使用同一轮混合地形后训练，不再采用上一版草案中的多�
 
 现有事件实现将角度直接送入欧拉角/四元数计算，使用弧度。备用文件的部分注释写“度”，例如 `pitch=(-20, 20)`，不能将这个数值直接当作 ±20° 复制到实际配置。
 
-普通 Play 默认使用名义外参，便于对照；另以固定种子开启同范围随机化做鲁棒性检查。实施时验证相机有效外参及深度图确实发生预期变化。
+V3 Play 默认使用名义外参，便于对照；另以固定种子开启同范围随机化做鲁棒性检查。实施时验证相机有效外参及深度图确实发生预期变化。
 
 ## 三、要求二：只保留平地和楼梯，站立与楼梯占大比例
 
@@ -133,7 +135,7 @@ stop = (norm(command[:, :2]) < 0.05) & (abs(command[:, 2]) < 0.05)
 | `stand_control.py` | 删除 AMP 替换、停车混合及接触/姿态混合逻辑 |
 | `mdp/commands/stopping_velocity_command.py` | 删除，恢复原 `PoseVelocityCommand` |
 | `g1_parkour_stand_finetune_cfg.py` | 删除 V2 专用配置和标志 |
-| V2 Gym 注册、`StandFineTuneAlgoCfg`、V2 runner 配置 | 删除，V3 沿用普通 Parkour 入口 |
+| V2 Gym 注册、`StandFineTuneAlgoCfg`、V2 runner 配置 | 删除；V3 单独注册配置，继续使用原 `WasabiPPO` |
 | `runner_helpers.py` | 移除 V2 自动深度匹配及训练/Play 中的调用；当前已没有算法加载适配层 |
 | V2 优化器清空、更新计数、额外 DDP 同步 | 随自定义算法删除，沿用原 resume 机制 |
 | V2 专用测试与 `STAND_FINETUNE.md` | 移除失效测试，更新或移除失效使用说明 |
@@ -146,9 +148,9 @@ V2 中文版本说明和 Git 历史可以保留作实验记录，不参与训练
 
 优先从原始普通 Parkour 的可靠 checkpoint 分支，例如原 `model_75000.pt`，而不是直接延续已经退化的 V2 最后一个模型。原模型、V2 最佳模型作为评估对照。
 
-移除自动深度匹配后，配置中的裁剪与历史帧数必须人工匹配旧 checkpoint。基础模型若使用 64×36，就沿用相应输入；若使用裁剪后的 32×18，就沿用对应裁剪。本次 V3 不再把改变深度输入或重建编码器作为训练手段。
+移除自动深度匹配后，配置中的裁剪与历史帧数必须人工匹配旧 checkpoint。V3 通过独立配置的 `V3_DEPTH_CROP_REGION` 设置裁剪，不修改普通任务。基础模型若使用 64×36，就沿用相应输入；若使用裁剪后的 32×18，就沿用对应裁剪。本次 V3 不再把改变深度输入或重建编码器作为训练手段。
 
-可在原算法配置入口覆盖 `learning_rate=5e-5, schedule="fixed"`，不保留 V2 的 clip/entropy 特殊配置，也不清空优化器动量。加载 checkpoint 后必须核对优化器各参数组的实际学习率：原 `load_state_dict` 会恢复 checkpoint 中的旧学习率。
+独立 V3 runner 默认 `learning_rate=5e-5, schedule="fixed"`，不保留 V2 的 clip/entropy 特殊配置，也不清空优化器动量。普通 runner 保持原来的 `1e-3 + adaptive`。加载 checkpoint 后必须核对优化器各参数组的实际学习率：原 `load_state_dict` 会恢复 checkpoint 中的旧学习率。
 
 若选择上述小学习率，最小实现是在项目 `train.py` 的 `runner.load()` 之后，按当前配置更新 `runner.alg.learning_rate` 及策略优化器参数组的 `lr`。这是恢复后训练参数的设置，不需要重新定义算法；外部 PPO 不改。多 GPU 下各 rank 均执行相同学习率设置。
 
@@ -158,11 +160,12 @@ V2 中文版本说明和 Git 历史可以保留作实验记录，不参与训练
 
 | 文件 | 主要修改 |
 | --- | --- |
-| `tasks/parkour/config/parkour_env_cfg.py` | 四项地形比例、纯零速命令配置、相机 startup 事件、三个站立速度奖励 |
+| `tasks/parkour/config/parkour_env_cfg.py` | 恢复普通 Parkour 原配置 |
+| `tasks/parkour/config/g1/g1_parkour_stand_stairs_v3_cfg.py` | 独立 V3 地形、命令、相机事件、站立速度奖励及裁剪配置 |
 | `tasks/parkour/mdp/rewards.py` | 增加带零命令门控的速度平方惩罚函数 |
-| `tasks/parkour/config/g1/g1_parkour_target_amp_cfg.py` | 普通 Play 的相机随机化开关 |
+| `tasks/parkour/config/g1/g1_parkour_target_amp_cfg.py` | 恢复普通 G1 任务原配置 |
 | `scripts/instinct_rl/train.py`、`play.py` | 清理 V2 分支及深度辅助调用；训练入口核对恢复后学习率 |
-| G1 任务注册、agent 配置、command 导出 | 删除 V2 注册和引用，保留原任务 |
+| G1 任务注册和 agent 配置 | 增加独立 V3 训练/Play 注册及 runner，保留普通任务 |
 
 主要功能集中在原有配置和奖励函数中。算法、网络、reward manager 和环境基类都沿用原工程。
 

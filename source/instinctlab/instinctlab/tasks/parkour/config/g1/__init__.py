@@ -48,3 +48,17 @@ gym.register(
         "instinct_rl_cfg_entry_point": f"{agents.__name__}.instinct_rl_amp_cfg:G1ParkourPPORunnerCfg",
     },
 )
+
+for task_id, env_class in (
+    ("Instinct-Parkour-Stand-Stairs-Finetune-G1-v3", "G1ParkourStandStairsV3EnvCfg"),
+    ("Instinct-Parkour-Stand-Stairs-Finetune-G1-Play-v3", "G1ParkourStandStairsV3EnvCfg_PLAY"),
+):
+    gym.register(
+        id=task_id,
+        entry_point="instinctlab.envs:InstinctRlEnv",
+        disable_env_checker=True,
+        kwargs={
+            "env_cfg_entry_point": f"{task_entry}.g1_parkour_stand_stairs_v3_cfg:{env_class}",
+            "instinct_rl_cfg_entry_point": f"{agents.__name__}.instinct_rl_amp_cfg:G1ParkourStandStairsV3RunnerCfg",
+        },
+    )
