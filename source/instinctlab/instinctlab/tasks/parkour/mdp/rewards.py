@@ -8,6 +8,7 @@ from isaaclab.sensors import ContactSensor
 from isaaclab.utils.math import quat_apply_inverse
 
 if TYPE_CHECKING:
+    from isaaclab.assets import RigidObject
     from isaaclab.envs import ManagerBasedRLEnv
 
 
@@ -74,6 +75,51 @@ def stand_still(
         (dof_error - offset)
         * (torch.norm(env.command_manager.get_command(command_name)[:, :2], dim=1) < threshold)
         * (torch.abs(env.command_manager.get_command(command_name)[:, 2]) < threshold)
+    )
+
+
+def _standing_command_mask(env: ManagerBasedRLEnv, command_name: str, threshold: float) -> torch.Tensor:
+    """Select near-zero translation AND yaw commands, including on stair platforms."""
+    command = env.command_manager.get_command(command_name)
+    return (torch.norm(command[:, :2], dim=1) < threshold) & (torch.abs(command[:, 2]) < threshold)
+
+
+def stand_joint_vel_l2(
+    env: ManagerBasedRLEnv,
+    command_name: str,
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+    threshold: float = 0.05,
+) -> torch.Tensor:
+    """Penalize joint motion under a near-zero velocity command."""
+    asset = env.scene[asset_cfg.name]
+    return torch.sum(torch.square(asset.data.joint_vel[:, asset_cfg.joint_ids]), dim=1) * _standing_command_mask(
+        env, command_name, threshold
+    )
+
+
+def stand_lin_vel_xy_l2(
+    env: ManagerBasedRLEnv,
+    command_name: str,
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+    threshold: float = 0.05,
+) -> torch.Tensor:
+    """Penalize horizontal base drift under a near-zero velocity command."""
+    asset = env.scene[asset_cfg.name]
+    return torch.sum(torch.square(asset.data.root_lin_vel_b[:, :2]), dim=1) * _standing_command_mask(
+        env, command_name, threshold
+    )
+
+
+def stand_ang_vel_l2(
+    env: ManagerBasedRLEnv,
+    command_name: str,
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+    threshold: float = 0.05,
+) -> torch.Tensor:
+    """Penalize base rocking and rotation under a near-zero velocity command."""
+    asset = env.scene[asset_cfg.name]
+    return torch.sum(torch.square(asset.data.root_ang_vel_b), dim=1) * _standing_command_mask(
+        env, command_name, threshold
     )
 
 

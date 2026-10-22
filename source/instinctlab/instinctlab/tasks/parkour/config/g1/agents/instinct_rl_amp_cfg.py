@@ -104,23 +104,3 @@ class G1IncompleteStairsPPORunnerCfg(G1ParkourPPORunnerCfg):
     """Runner configuration with an isolated log directory for incomplete stairs."""
 
     experiment_name = "g1_parkour_incomplete_stairs"
-
-
-@configclass
-class StandFineTuneAlgoCfg(AmpAlgoCfg):
-    class_name = "instinctlab.tasks.parkour.stand_algorithm:ParkourStandPPO"
-    learning_rate = 5.0e-5
-    schedule = "fixed"
-    clip_param = 0.1
-    entropy_coef = 0.001
-    stand_warmup_updates = 100
-    stand_blend_updates = 2000
-    reset_optimizer_on_warm_start = True
-
-
-@configclass
-class G1ParkourStandFineTuneRunnerCfg(G1ParkourPPORunnerCfg):
-    experiment_name = "g1_parkour_stand_finetune"
-    max_iterations = 5000
-    save_interval = 100
-    algorithm = StandFineTuneAlgoCfg()

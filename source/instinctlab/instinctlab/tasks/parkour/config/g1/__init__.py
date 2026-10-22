@@ -48,19 +48,3 @@ gym.register(
         "instinct_rl_cfg_entry_point": f"{agents.__name__}.instinct_rl_amp_cfg:G1ParkourPPORunnerCfg",
     },
 )
-
-for task_id, env_class in (
-    ("Instinct-Parkour-Stand-Finetune-G1-v0", "G1ParkourStandFineTuneEnvCfg"),
-    ("Instinct-Parkour-Stand-Finetune-G1-Play-v0", "G1ParkourStandFineTuneEnvCfg_PLAY"),
-):
-    gym.register(
-        id=task_id,
-        entry_point="instinctlab.tasks.parkour.stand_env:ParkourStandEnv",
-        disable_env_checker=True,
-        kwargs={
-            "env_cfg_entry_point": f"{task_entry}.g1_parkour_stand_finetune_cfg:{env_class}",
-            "instinct_rl_cfg_entry_point": (
-                f"{agents.__name__}.instinct_rl_amp_cfg:G1ParkourStandFineTuneRunnerCfg"
-            ),
-        },
-    )

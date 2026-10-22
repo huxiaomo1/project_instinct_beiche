@@ -93,7 +93,6 @@ from isaaclab_tasks.utils.hydra import hydra_task_config
 
 from instinctlab.utils.wrappers import InstinctRlVecEnvWrapper
 from instinctlab.utils.wrappers.instinct_rl import InstinctRlOnPolicyRunnerCfg
-from instinctlab.utils.wrappers.instinct_rl.runner_helpers import match_finetune_depth_to_checkpoint
 
 # wait for attach if in debug mode
 if args_cli.debug:
@@ -178,9 +177,6 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
             log_dir += h_args.split("=")[1]
     log_dir = os.path.join(log_root_path, log_dir)
 
-    if getattr(env_cfg, "stand_finetune", False) and not (agent_cfg.resume and agent_cfg.load_run):
-        raise ValueError("Standing fine-tuning requires --resume --load_run ... --checkpoint ...")
-
     if agent_cfg.resume:
         if os.path.isabs(agent_cfg.load_run):
             resume_path = get_checkpoint_path(os.path.dirname(agent_cfg.load_run), os.path.basename(agent_cfg.load_run), agent_cfg.load_checkpoint)  # type: ignore
@@ -190,9 +186,6 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
         resume_run_name = os.path.basename(os.path.dirname(resume_path))
         resume_label = "_".join(resume_run_name.split("_")[:2])
         log_dir += f"_from{resume_label}"
-
-    if getattr(env_cfg, "stand_finetune", False):
-        match_finetune_depth_to_checkpoint(env_cfg, agent_cfg.to_dict(), resume_path)
 
     # create isaac environment
     env = gym.make(args_cli.task, cfg=env_cfg, render_mode="rgb_array" if args_cli.video else None)
@@ -224,6 +217,13 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
         print(f"[INFO]: Loading model checkpoint from: {resume_path}")
         # load previously trained model
         runner.load(resume_path)
+        # Optimizer loading restores the checkpoint's LR. Honor an explicitly
+        # configured fixed rate for post-training without clearing its momentum.
+        if agent_cfg.algorithm.schedule == "fixed":
+            runner.alg.learning_rate = agent_cfg.algorithm.learning_rate
+            for param_group in runner.alg.optimizer.param_groups:
+                param_group["lr"] = runner.alg.learning_rate
+            print(f"[INFO]: Resumed fixed learning rate: {runner.alg.learning_rate}")
 
     # dump the configuration into log-directory
     if not ("LOCAL_RANK" in os.environ and dist.get_rank() > 0):

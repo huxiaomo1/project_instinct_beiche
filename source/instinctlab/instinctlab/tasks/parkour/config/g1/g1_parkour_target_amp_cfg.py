@@ -129,6 +129,7 @@ class G1ParkourRoughEnvCfg_PLAY(G1ParkourRoughEnvCfg):
         self.scene.leg_volume_points.debug_vis = True
         self.commands.base_velocity.debug_vis = True
         self.events.physics_material = None
+        self.events.randomize_camera_offset = None
         self.events.reset_robot_joints.params = {
             "position_range": (0.0, 0.0),
             "velocity_range": (0.0, 0.0),

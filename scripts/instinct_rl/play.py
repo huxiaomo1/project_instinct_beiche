@@ -99,7 +99,6 @@ import instinctlab.terrains as terrain_gen
 from instinctlab.managers.reward_manager import MultiRewardManager
 from instinctlab.utils.wrappers import InstinctRlVecEnvWrapper
 from instinctlab.utils.wrappers.instinct_rl import InstinctRlOnPolicyRunnerCfg
-from instinctlab.utils.wrappers.instinct_rl.runner_helpers import match_finetune_depth_to_checkpoint
 
 STAIRS_DEMO_TASK_ID = "Instinct-Parkour-Target-Amp-G1-Stairs-Play-v0"
 
@@ -267,9 +266,6 @@ def main():
 
     # Keep inference on the same device as the environment, including --device cuda:N.
     agent_cfg.device = env_cfg.sim.device
-
-    if getattr(env_cfg, "stand_finetune", False) and agent_cfg.load_run is not None:
-        match_finetune_depth_to_checkpoint(env_cfg, agent_cfg_dict, resume_path)
 
     # create isaac environment
     env = gym.make(runtime_task, cfg=env_cfg, render_mode="rgb_array" if args_cli.video else None)
